@@ -194,6 +194,23 @@ export function usePlayer({
     };
   }, [resetPlayer]);
 
+  const handlePlaybackRateChange = useCallback(
+    (rate: number) => {
+      adapterRef.current?.setPlaybackRate(rate);
+      setPlayerState({ playbackRate: rate });
+      if (canControl) {
+        MediaService.broadcastPlayerEvent(slug, {
+          type: 'PLAYER_RATE',
+          position: playerState.position,
+          sentAt: Date.now(),
+          senderId: userId,
+          playbackRate: rate,
+        });
+      }
+    },
+    [canControl, playerState.position, slug, userId, setPlayerState]
+  );
+
   return {
     // State
     playerState,
@@ -209,6 +226,7 @@ export function usePlayer({
     handleSeek,
     handleVolumeChange,
     handleMuteToggle,
+    handlePlaybackRateChange,
     handleMediaChange,
 
     // Adapter callbacks

@@ -97,6 +97,7 @@ export function MediaPlayer({
     handleSeek,
     handleVolumeChange,
     handleMuteToggle,
+    handlePlaybackRateChange,
     handleMediaChange,
     onAdapterReady,
     onAdapterTimeUpdate,
@@ -132,7 +133,7 @@ export function MediaPlayer({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fullscreen ───────────────────────────────────────────────────────────
+  // ── Fullscreen & PiP ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const handleFullscreen = useCallback(() => {
     const el = containerRef.current;
@@ -143,6 +144,83 @@ export function MediaPlayer({
       document.exitFullscreen().catch(() => null);
     }
   }, []);
+
+  const handleTogglePiP = useCallback(async () => {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        const videoEl = containerRef.current?.querySelector('video');
+        if (videoEl && document.pictureInPictureEnabled) {
+          await videoEl.requestPictureInPicture();
+        }
+      }
+    } catch {
+      /* ignore PiP errors */
+    }
+  }, []);
+
+  // ── Keyboard Shortcuts (Space, Left, Right, Shift+Left/Right, M, F) ──────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        const delta = e.shiftKey ? 10 : 5;
+        handleSeek(Math.max(0, playerState.position - delta));
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        const delta = e.shiftKey ? 10 : 5;
+        handleSeek(Math.min(playerState.duration, playerState.position + delta));
+      } else if (e.code === 'KeyM') {
+        e.preventDefault();
+        handleMuteToggle();
+      } else if (e.code === 'KeyF') {
+        e.preventDefault();
+        handleFullscreen();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleTogglePlay, handleSeek, handleMuteToggle, handleFullscreen, playerState.position, playerState.duration]);
+
+  // ── Double-Tap Gestures (-5s / +5s) ──────────────────────────────────────
+  const lastTapRef = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
+  const [gestureFeedback, setGestureFeedback] = useState<'rewind' | 'forward' | null>(null);
+
+  const handleViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isRightSide = clickX > rect.width / 2;
+
+    if (now - lastTapRef.current.time < 300) {
+      if (isRightSide) {
+        handleSeek(Math.min(playerState.duration, playerState.position + 5));
+        setGestureFeedback('forward');
+      } else {
+        handleSeek(Math.max(0, playerState.position - 5));
+        setGestureFeedback('rewind');
+      }
+      setTimeout(() => setGestureFeedback(null), 650);
+    } else {
+      resetHideTimer();
+    }
+    lastTapRef.current = { time: now, x: clickX };
+  };
 
   // ── Controls visibility (auto-hide) ──────────────────────────────────────
   const [showControls, setShowControls] = useState(true);
@@ -203,6 +281,24 @@ export function MediaPlayer({
         {/* Floating Emoji Reactions Overlay */}
         <ReactionOverlay particles={particles} />
 
+        {/* Double-tap ripple gesture overlay */}
+        {gestureFeedback === 'rewind' && (
+          <div className="absolute inset-y-0 left-0 w-1/2 z-30 flex items-center justify-center bg-white/10 backdrop-blur-xs animate-in fade-in zoom-in duration-200 pointer-events-none rounded-l-xl">
+            <div className="flex flex-col items-center gap-1 text-white font-bold text-lg drop-shadow-md">
+              <span className="text-3xl">⏪</span>
+              <span>-5 seconds</span>
+            </div>
+          </div>
+        )}
+        {gestureFeedback === 'forward' && (
+          <div className="absolute inset-y-0 right-0 w-1/2 z-30 flex items-center justify-center bg-white/10 backdrop-blur-xs animate-in fade-in zoom-in duration-200 pointer-events-none rounded-r-xl">
+            <div className="flex flex-col items-center gap-1 text-white font-bold text-lg drop-shadow-md">
+              <span className="text-3xl">⏩</span>
+              <span>+5 seconds</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Top bar — source badge + add video button ─────────────────── */}
         {(currentMedia || canControl) && (
           <div
@@ -232,7 +328,7 @@ export function MediaPlayer({
         )}
 
         {/* ── Player area ───────────────────────────────────────────────── */}
-        <div className="aspect-video w-full">
+        <div className="aspect-video w-full cursor-pointer" onClick={handleViewportClick}>
           {/* Error */}
           {error && <PlayerError message={error} onRetry={handleRetry} />}
 
@@ -299,7 +395,9 @@ export function MediaPlayer({
               onSeek={handleSeek}
               onVolumeChange={handleVolumeChange}
               onMuteToggle={handleMuteToggle}
+              onPlaybackRateChange={handlePlaybackRateChange}
               onFullscreen={handleFullscreen}
+              onTogglePiP={handleTogglePiP}
               title={currentMedia.title}
             />
           </div>
