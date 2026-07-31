@@ -142,7 +142,7 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
             1: 'Playback aborted.',
             2: 'Network error loading video.',
             3: 'Video decoding failed.',
-            4: 'Video format not supported.',
+            4: 'Browsers cannot decode MKV container files natively. Please select an MP4 or WEBM file, or click 🖥️ Share Screen to stream your movie!',
           };
           onError(msgs[err?.code ?? 0] ?? 'Unknown playback error.');
         }}

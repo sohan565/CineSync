@@ -277,7 +277,10 @@ export function MediaUrlInput({ isOpen, onClose, onSubmit, canControl }: MediaUr
                   <div>
                     <p className="text-xs font-bold text-foreground">Click to browse or drop a video file</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Supports MP4, WebM, MKV, MOV files from your hard drive
+                      Recommended: MP4 (.mp4) or WebM (.webm) for direct browser playback
+                    </p>
+                    <p className="text-[10px] text-amber-400 font-semibold mt-1">
+                      💡 Tip: For MKV (.mkv) files, use 🖥️ Share Screen to stream in full HD!
                     </p>
                   </div>
                 )}
