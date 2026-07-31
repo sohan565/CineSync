@@ -14,6 +14,7 @@ import { useAppStore } from '@/hooks/use-store';
 import { VideoGrid } from '@/components/webrtc/video-grid';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 
 interface LiveKitVideoGridProps {
   slug: string;
@@ -26,15 +27,37 @@ function LiveKitSidebarControls() {
     useLocalParticipant();
 
   const toggleMic = async () => {
-    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    try {
+      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : '';
+      toast.error(
+        err.includes('Permission') || err.includes('NotAllowed')
+          ? 'Microphone permission blocked. Please allow mic access in your browser address bar.'
+          : 'Could not access microphone. Please check your hardware device.'
+      );
+    }
   };
 
   const toggleCam = async () => {
-    await localParticipant.setCameraEnabled(!isCameraEnabled);
+    try {
+      await localParticipant.setCameraEnabled(!isCameraEnabled);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : '';
+      toast.error(
+        err.includes('Permission') || err.includes('NotAllowed')
+          ? 'Camera permission blocked. Please allow camera access in your browser address bar.'
+          : 'Could not access camera device.'
+      );
+    }
   };
 
   const toggleScreen = async () => {
-    await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
+    try {
+      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
+    } catch {
+      toast.error('Screen sharing was cancelled or unavailable.');
+    }
   };
 
   const handleDisconnect = () => {
@@ -174,11 +197,14 @@ export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
     if (!slug || !username) return;
 
     let isMounted = true;
+    const uniqueIdentity = `${username}-${user?.id || Math.random().toString(36).substring(2, 7)}`;
 
     async function fetchToken() {
       try {
         const res = await fetch(
-          `/api/livekit/token?room=${encodeURIComponent(slug)}&username=${encodeURIComponent(username)}`
+          `/api/livekit/token?room=${encodeURIComponent(slug)}&username=${encodeURIComponent(
+            username
+          )}&identity=${encodeURIComponent(uniqueIdentity)}`
         );
         const data = await res.json();
         if (data.token && isMounted) {
@@ -196,7 +222,7 @@ export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
     return () => {
       isMounted = false;
     };
-  }, [slug, username]);
+  }, [slug, username, user?.id]);
 
   // If LiveKit Cloud URL or token isn't ready/error, use our clean native WebRTC fallback!
   if (!serverUrl || error || !token) {
@@ -215,8 +241,8 @@ export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
   return (
     <div className={cn('rounded-xl border border-border bg-card overflow-hidden', className)} data-lk-theme="default">
       <LiveKitRoom
-        video={true}
-        audio={true}
+        video={false}
+        audio={false}
         token={token}
         serverUrl={serverUrl}
         connect={true}

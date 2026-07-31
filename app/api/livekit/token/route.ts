@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const identityParam = request.nextUrl.searchParams.get('identity') || `${username}-${Math.random().toString(36).substring(2, 7)}`;
+
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: username,
+      identity: identityParam,
       name: username,
       ttl: '2h',
     });
