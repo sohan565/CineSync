@@ -4,12 +4,12 @@ import React, { useEffect, useState } from 'react';
 import {
   LiveKitRoom,
   ParticipantTile,
-  ControlBar,
   useTracks,
+  useLocalParticipant,
   RoomAudioRenderer,
+  useRoomContext,
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import '@livekit/components-styles';
 import { useAppStore } from '@/hooks/use-store';
 import { VideoGrid } from '@/components/webrtc/video-grid';
 import { useWebRTC } from '@/hooks/use-webrtc';
@@ -18,6 +18,112 @@ import { cn } from '@/lib/utils';
 interface LiveKitVideoGridProps {
   slug: string;
   className?: string;
+}
+
+function LiveKitSidebarControls() {
+  const room = useRoomContext();
+  const { isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled, localParticipant } =
+    useLocalParticipant();
+
+  const toggleMic = async () => {
+    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+  };
+
+  const toggleCam = async () => {
+    await localParticipant.setCameraEnabled(!isCameraEnabled);
+  };
+
+  const toggleScreen = async () => {
+    await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
+  };
+
+  const handleDisconnect = () => {
+    room.disconnect();
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 border-t border-border/50 pt-2.5 pb-1 flex-wrap">
+      {/* Mic Button */}
+      <button
+        type="button"
+        onClick={toggleMic}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
+          isMicrophoneEnabled
+            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
+        )}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          {isMicrophoneEnabled ? (
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+          ) : (
+            <>
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v3" />
+            </>
+          )}
+        </svg>
+        {isMicrophoneEnabled ? 'Mic On' : 'Mic Off'}
+      </button>
+
+      {/* Camera Button */}
+      <button
+        type="button"
+        onClick={toggleCam}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
+          isCameraEnabled
+            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
+        )}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          {isCameraEnabled ? (
+            <path d="M23 7l-7 5 7 5V7zM14 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
+          ) : (
+            <>
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M21 21l-4.35-4.35M23 7l-7 5v1.5M1 5h2M15 5a2 2 0 0 1 2 2v8" />
+            </>
+          )}
+        </svg>
+        {isCameraEnabled ? 'Cam On' : 'Cam Off'}
+      </button>
+
+      {/* Screen Share Button */}
+      <button
+        type="button"
+        onClick={toggleScreen}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
+          isScreenShareEnabled
+            ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
+        )}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+        {isScreenShareEnabled ? 'Sharing' : 'Share'}
+      </button>
+
+      {/* Disconnect Button */}
+      <button
+        type="button"
+        onClick={handleDisconnect}
+        className="flex items-center gap-1 rounded-lg bg-red-600/20 px-2 py-1.5 text-xs font-semibold text-red-400 border border-red-500/30 transition hover:bg-red-600/30"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+        </svg>
+        Leave
+      </button>
+    </div>
+  );
 }
 
 function LiveKitSidebarLayout() {
@@ -46,20 +152,8 @@ function LiveKitSidebarLayout() {
       {/* Audio Renderer for remote participants */}
       <RoomAudioRenderer />
 
-      {/* Control Bar — Explicitly show Microphone & Camera controls */}
-      <div className="flex justify-center border-t border-border/50 pt-2">
-        <ControlBar
-          controls={{
-            microphone: true,
-            camera: true,
-            screenShare: true,
-            chat: false,
-            settings: false,
-            leave: false,
-          }}
-          variation="minimal"
-        />
-      </div>
+      {/* Custom Control Bar with explicit SVG icons and Tailwind styling */}
+      <LiveKitSidebarControls />
     </div>
   );
 }
