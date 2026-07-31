@@ -110,14 +110,13 @@ export function MediaPlayer({
   const ytRef = useRef<YouTubePlayerHandle>(null);
   const h5Ref = useRef<HTML5PlayerHandle>(null);
 
-  // Keep the shared adapterRef pointing to the active adapter
-  useEffect(() => {
-    if (currentMedia?.sourceType === 'youtube') {
-      adapterRef.current = ytRef.current as PlayerAdapter | null;
-    } else {
-      adapterRef.current = h5Ref.current as PlayerAdapter | null;
-    }
-  }, [currentMedia?.sourceType, adapterRef]);
+  // Keep the shared adapterRef pointing to the active adapter.
+  // Sync on every render so the Play button always has the latest adapter.
+  if (currentMedia?.sourceType === 'youtube') {
+    adapterRef.current = ytRef.current as PlayerAdapter | null;
+  } else {
+    adapterRef.current = h5Ref.current as PlayerAdapter | null;
+  }
 
   // ── Initialize from DB state on mount ───────────────────────────────────
   useEffect(() => {

@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
   useState,
+  useCallback,
 } from 'react';
 import { PlayerAdapter } from '@/types/player';
 import { MediaSourceType } from '@/types/room';
@@ -41,6 +42,7 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
     const [isAdapterReady, setIsAdapterReady] = useState(false);
+    const readyFiredRef = useRef(false);
 
     // Expose adapter interface
     useImperativeHandle(
@@ -67,26 +69,29 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
       [isAdapterReady]
     );
 
-    const handleMediaLoaded = () => {
+    // Stable callback that fires onReady exactly once per URL load
+    const handleMediaLoaded = useCallback(() => {
       const v = videoRef.current;
-      if (v && v.duration && !isNaN(v.duration)) {
+      if (v && v.duration && !isNaN(v.duration) && isFinite(v.duration) && !readyFiredRef.current) {
+        readyFiredRef.current = true;
         setIsAdapterReady(true);
         onReady(v.duration);
       }
-    };
+    }, [onReady]);
 
-    // Attach HLS.js or native src
+    // Attach HLS.js or native src when URL changes
     useEffect(() => {
       const video = videoRef.current;
       if (!video || !url) return;
 
+      // Reset ready state for new URL
+      readyFiredRef.current = false;
       setIsAdapterReady(false);
       let hlsInstance: Hls | null = null;
 
       if (sourceType === 'hls') {
         getHls().then((HlsClass) => {
           if (!HlsClass.isSupported()) {
-            // Safari supports HLS natively
             if (video.canPlayType('application/vnd.apple.mpegurl')) {
               video.src = url;
             } else {
@@ -110,7 +115,7 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
           });
         });
       } else {
-        // MP4 or local blob URL
+        // MP4, WebM, or local blob URL
         video.src = url;
         video.load();
       }
@@ -128,14 +133,15 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
             /* ignore DOM cleanup errors */
           }
         }
+        readyFiredRef.current = false;
         setIsAdapterReady(false);
       };
-    }, [url, sourceType]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [url, sourceType, onError]);
 
     return (
       <video
         ref={videoRef}
-        className="h-full w-full rounded-xl object-contain bg-black cursor-pointer"
+        className="h-full w-full rounded-xl object-contain bg-black"
         playsInline
         preload="auto"
         aria-label="Video player"
@@ -154,7 +160,7 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
             1: 'Playback aborted.',
             2: 'Network error loading video.',
             3: 'Video decoding failed.',
-            4: 'Browsers cannot decode MKV container files natively. Please select an MP4 or WEBM file, or click 🖥️ Share Screen to stream your movie!',
+            4: 'Browsers cannot play MKV files natively. Use an MP4/WebM file, or click 🖥️ Share Screen to stream your movie!',
           };
           onError(msgs[err?.code ?? 0] ?? 'Unknown playback error.');
         }}
