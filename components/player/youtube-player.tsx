@@ -104,13 +104,21 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     );
 
     useEffect(() => {
-      if (!containerRef.current) return;
+      const containerEl = containerRef.current;
+      if (!containerEl) return;
       let destroyed = false;
 
       loadYouTubeAPI().then(() => {
-        if (destroyed || !containerRef.current) return;
+        if (destroyed || !containerEl) return;
 
-        playerRef.current = new window.YT.Player(containerRef.current, {
+        // Clear existing children & append isolated mount target
+        containerEl.innerHTML = '';
+        const mountTarget = document.createElement('div');
+        mountTarget.style.width = '100%';
+        mountTarget.style.height = '100%';
+        containerEl.appendChild(mountTarget);
+
+        playerRef.current = new window.YT.Player(mountTarget, {
           videoId,
           playerVars: {
             autoplay: 0,
@@ -174,6 +182,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
           /* ignore YT iframe destroy DOM errors */
         }
         playerRef.current = null;
+        if (containerEl) {
+          containerEl.innerHTML = '';
+        }
         setIsAdapterReady(false);
       };
     }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
