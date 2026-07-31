@@ -48,20 +48,27 @@ function LiveKitSidebarControls() {
 
   const toggleCam = async () => {
     try {
-      await localParticipant.setCameraEnabled(!isCameraEnabled);
-    } catch (e: unknown) {
-      const err = e as { name?: string; message?: string };
-      const errName = err?.name || '';
-      const errMsg = err?.message || '';
+      await localParticipant.setCameraEnabled(!isCameraEnabled, {
+        resolution: { width: 640, height: 360, frameRate: 24 },
+      });
+    } catch {
+      // Fallback without resolution constraint
+      try {
+        await localParticipant.setCameraEnabled(!isCameraEnabled);
+      } catch (errInner: unknown) {
+        const err = errInner as { name?: string; message?: string };
+        const errName = err?.name || '';
+        const errMsg = err?.message || '';
 
-      if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent') || errMsg.includes('Could not start')) {
-        toast.error('Camera is being used by another tab (e.g. localhost:8080) or app (Zoom/Teams). Please close the other tab or app!');
-      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        toast.error('Camera permission blocked. Click the lock 🔒 icon in your browser address bar to allow.');
-      } else if (errName === 'NotFoundError') {
-        toast.error('No camera device found on your computer.');
-      } else {
-        toast.error(`Camera error: ${errMsg || errName || 'Could not access camera device.'}`);
+        if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent') || errMsg.includes('Could not start')) {
+          toast.error('Camera is being used by another app (Zoom/Teams/OBS) or blocked by OS Privacy settings!');
+        } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          toast.error('Camera permission blocked. Click the lock 🔒 icon in your browser address bar to allow.');
+        } else if (errName === 'NotFoundError') {
+          toast.error('No camera device found on your computer.');
+        } else {
+          toast.error(`Camera error: ${errMsg || errName || 'Could not access camera device.'}`);
+        }
       }
     }
   };

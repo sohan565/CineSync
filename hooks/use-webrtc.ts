@@ -209,8 +209,17 @@ export function useWebRTC(slug: string | null) {
 
   const toggleCam = useCallback(async () => {
     try {
+      const videoConstraints = {
+        width: { ideal: 640 },
+        height: { ideal: 360 },
+        frameRate: { ideal: 24 },
+      };
+
       if (!localStream) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: mediaState.isMicOn, video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: mediaState.isMicOn,
+          video: videoConstraints,
+        });
         setLocalStream(stream);
         setMediaState((prev) => ({ ...prev, isCamOn: true }));
         toast.success('Camera enabled.');
@@ -220,7 +229,7 @@ export function useWebRTC(slug: string | null) {
           videoTrack.enabled = !mediaState.isCamOn;
           setMediaState((prev) => ({ ...prev, isCamOn: videoTrack.enabled }));
         } else {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
           const newVideoTrack = videoStream.getVideoTracks()[0];
           localStream.addTrack(newVideoTrack);
           setMediaState((prev) => ({ ...prev, isCamOn: true }));
