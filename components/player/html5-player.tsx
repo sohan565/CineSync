@@ -46,7 +46,15 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
     useImperativeHandle(
       ref,
       () => ({
-        play: () => { videoRef.current?.play().catch(() => null); },
+        play: () => {
+          const v = videoRef.current;
+          if (v) {
+            const p = v.play();
+            if (p !== undefined) {
+              p.catch(() => null);
+            }
+          }
+        },
         pause: () => { videoRef.current?.pause(); },
         seekTo: (s: number) => { if (videoRef.current) videoRef.current.currentTime = s; },
         setVolume: (v: number) => { if (videoRef.current) videoRef.current.volume = v; },
@@ -58,6 +66,14 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
       }),
       [isAdapterReady]
     );
+
+    const handleMediaLoaded = () => {
+      const v = videoRef.current;
+      if (v && v.duration && !isNaN(v.duration)) {
+        setIsAdapterReady(true);
+        onReady(v.duration);
+      }
+    };
 
     // Attach HLS.js or native src
     useEffect(() => {
@@ -119,17 +135,13 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
     return (
       <video
         ref={videoRef}
-        className="h-full w-full rounded-xl object-contain bg-black"
+        className="h-full w-full rounded-xl object-contain bg-black cursor-pointer"
         playsInline
-        preload="metadata"
+        preload="auto"
         aria-label="Video player"
-        onLoadedMetadata={() => {
-          const v = videoRef.current;
-          if (v) {
-            setIsAdapterReady(true);
-            onReady(v.duration);
-          }
-        }}
+        onLoadedMetadata={handleMediaLoaded}
+        onLoadedData={handleMediaLoaded}
+        onCanPlay={handleMediaLoaded}
         onTimeUpdate={() => {
           if (videoRef.current) onTimeUpdate(videoRef.current.currentTime);
         }}
