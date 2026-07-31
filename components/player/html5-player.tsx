@@ -100,12 +100,17 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
       }
 
       return () => {
-        hlsInstance?.destroy();
+        if (hlsInstance) {
+          try { hlsInstance.destroy(); } catch { /* ignore */ }
+        }
         hlsRef.current = null;
         if (video) {
-          video.pause();
-          video.removeAttribute('src');
-          video.load();
+          try {
+            video.pause();
+            video.src = '';
+          } catch {
+            /* ignore DOM cleanup errors */
+          }
         }
         setIsAdapterReady(false);
       };

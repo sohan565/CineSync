@@ -261,7 +261,7 @@ export function MediaPlayer({
           {/* HTML5 (MP4 / HLS / local) */}
           {!error && currentMedia && currentMedia.sourceType !== 'youtube' && (
             <HTML5Player
-              key={`h5-${currentMedia.url}-${retryKey}`}
+              key="h5-player-adapter"
               ref={h5Ref}
               url={currentMedia.url}
               sourceType={currentMedia.sourceType}
