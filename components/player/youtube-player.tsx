@@ -168,7 +168,11 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       return () => {
         destroyed = true;
         if (timeUpdateInterval.current) clearInterval(timeUpdateInterval.current);
-        playerRef.current?.destroy();
+        try {
+          playerRef.current?.destroy();
+        } catch {
+          /* ignore YT iframe destroy DOM errors */
+        }
         playerRef.current = null;
         setIsAdapterReady(false);
       };
