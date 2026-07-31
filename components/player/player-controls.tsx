@@ -142,22 +142,24 @@ function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle }: Volume
       </button>
 
       {showSlider && (
-        <div className="flex items-center gap-1.5 bg-black/90 px-2.5 py-1 rounded-lg border border-white/15 backdrop-blur-md shadow-lg">
+        <div className="flex items-center gap-1.5 bg-black/90 px-2.5 py-1.5 rounded-lg border border-white/15 backdrop-blur-md shadow-lg">
           <input
             type="range"
             min={0}
-            max={2}
+            max={5}
             step={0.05}
             value={isMuted ? 0 : volume}
             onChange={(e) => onVolumeChange(Number(e.target.value))}
-            aria-label="Volume slider"
-            className="w-24 accent-emerald-500 cursor-pointer"
+            aria-label="Volume slider (up to 500%)"
+            className="w-28 accent-emerald-500 cursor-pointer"
           />
           <span className={cn(
             "text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded transition-all min-w-[38px] text-center",
-            volume > 1.0
-              ? "bg-amber-500/30 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20 font-extrabold"
-              : "text-white/80 bg-white/10"
+            volume > 2.0
+              ? "bg-red-500/30 text-red-300 border border-red-500/50 shadow-sm shadow-red-500/20 font-extrabold"
+              : volume > 1.0
+                ? "bg-amber-500/30 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20 font-extrabold"
+                : "text-white/80 bg-white/10"
           )}>
             {Math.round(volume * 100)}%
           </span>

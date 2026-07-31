@@ -43,9 +43,15 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
     const hlsRef = useRef<Hls | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
     const gainNodeRef = useRef<GainNode | null>(null);
+    const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+    const postGainRef = useRef<GainNode | null>(null);
     const [isAdapterReady, setIsAdapterReady] = useState(false);
     const readyFiredRef = useRef(false);
 
+    // Build VLC-style audio processing chain:
+    // source → preGain → compressor → postGain → destination
+    // The compressor prevents clipping while the dual-gain stages
+    // provide headroom for truly loud, clean amplification.
     const initAudioBoost = () => {
       const v = videoRef.current;
       if (!v || gainNodeRef.current) return;
@@ -55,12 +61,34 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         const source = ctx.createMediaElementSource(v);
-        const gain = ctx.createGain();
-        source.connect(gain);
-        gain.connect(ctx.destination);
+
+        // Pre-gain: drives signal into compressor
+        const preGain = ctx.createGain();
+        preGain.gain.value = 1.0;
+
+        // Compressor: prevents clipping and maximizes perceived loudness
+        // (same approach VLC uses for clean amplification)
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -24;  // Start compressing at -24dB
+        compressor.knee.value = 12;        // Soft knee for natural sound
+        compressor.ratio.value = 8;        // 8:1 compression ratio
+        compressor.attack.value = 0.003;   // 3ms attack (fast, catches peaks)
+        compressor.release.value = 0.15;   // 150ms release (smooth)
+
+        // Post-gain (make-up gain): boosts compressed signal back up
+        const postGain = ctx.createGain();
+        postGain.gain.value = 1.0;
+
+        // Chain: source → preGain → compressor → postGain → speakers
+        source.connect(preGain);
+        preGain.connect(compressor);
+        compressor.connect(postGain);
+        postGain.connect(ctx.destination);
 
         audioCtxRef.current = ctx;
-        gainNodeRef.current = gain;
+        gainNodeRef.current = preGain;
+        compressorRef.current = compressor;
+        postGainRef.current = postGain;
       } catch {
         /* Ignore if already connected or blocked */
       }
@@ -87,9 +115,16 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
           if (v > 1.0) {
             initAudioBoost();
             el.volume = 1.0;
-            if (gainNodeRef.current) {
-              gainNodeRef.current.gain.value = v;
+
+            // Split the boost across pre-gain and post-gain for clean loudness:
+            // Pre-gain drives the compressor harder (more compression = louder perceived)
+            // Post-gain adds make-up gain after compression
+            const boostFactor = v; // e.g. 1.5 = 150%, 2.0 = 200%
+            if (gainNodeRef.current && postGainRef.current) {
+              gainNodeRef.current.gain.value = boostFactor * 1.5; // Drive compressor
+              postGainRef.current.gain.value = boostFactor;       // Make-up gain
             }
+
             if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
               audioCtxRef.current.resume().catch(() => null);
             }
@@ -97,6 +132,9 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
             el.volume = v;
             if (gainNodeRef.current) {
               gainNodeRef.current.gain.value = 1.0;
+            }
+            if (postGainRef.current) {
+              postGainRef.current.gain.value = 1.0;
             }
           }
         },
