@@ -13,6 +13,7 @@ interface VideoGridProps {
   mediaState: MediaStreamState;
   onToggleMic: () => void;
   onToggleCam: () => void;
+  onToggleScreenShare?: () => void;
   className?: string;
 }
 
@@ -22,6 +23,7 @@ export function VideoGrid({
   mediaState,
   onToggleMic,
   onToggleCam,
+  onToggleScreenShare,
   className,
 }: VideoGridProps) {
   const user = useAppStore((s) => s.user);
@@ -48,7 +50,7 @@ export function VideoGrid({
           displayName={user?.displayName ?? 'You'}
           avatarUrl={user?.avatarUrl}
           isMicOn={mediaState.isMicOn}
-          isCamOn={mediaState.isCamOn}
+          isCamOn={mediaState.isCamOn || mediaState.isScreenSharing}
           isSpeaking={mediaState.isSpeaking}
           isLocal
         />
@@ -72,6 +74,7 @@ export function VideoGrid({
         mediaState={mediaState}
         onToggleMic={onToggleMic}
         onToggleCam={onToggleCam}
+        onToggleScreenShare={onToggleScreenShare}
       />
     </div>
   );

@@ -11,7 +11,7 @@ interface LiveKitVideoGridProps {
 
 export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
   // Use 100% reliable Native WebRTC P2P mesh stream engine
-  const { localStream, remotePeers, mediaState, toggleMic, toggleCam } = useWebRTC(slug);
+  const { localStream, remotePeers, mediaState, toggleMic, toggleCam, toggleScreenShare } = useWebRTC(slug);
 
   return (
     <VideoGrid
@@ -20,6 +20,7 @@ export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
       mediaState={mediaState}
       onToggleMic={toggleMic}
       onToggleCam={toggleCam}
+      onToggleScreenShare={toggleScreenShare}
       className={className}
     />
   );

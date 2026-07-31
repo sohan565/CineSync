@@ -263,6 +263,33 @@ export function useWebRTC(slug: string | null) {
     }
   }, [localStream, mediaState, slug, user]);
 
+  // ── Toggle Screen Share ───────────────────────────────────────────────────
+
+  const toggleScreenShare = useCallback(async () => {
+    try {
+      if (mediaState.isScreenSharing) {
+        setMediaState((prev) => ({ ...prev, isScreenSharing: false }));
+        toast.info('Screen sharing stopped.');
+      } else {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+
+        screenStream.getVideoTracks()[0].onended = () => {
+          setMediaState((prev) => ({ ...prev, isScreenSharing: false }));
+          toast.info('Screen sharing stopped.');
+        };
+
+        setLocalStream(screenStream);
+        setMediaState((prev) => ({ ...prev, isScreenSharing: true }));
+        toast.success('Screen sharing started!');
+      }
+    } catch {
+      toast.error('Screen sharing was cancelled.');
+    }
+  }, [mediaState.isScreenSharing]);
+
   // ── Cleanup on unmount ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -280,5 +307,6 @@ export function useWebRTC(slug: string | null) {
     mediaState,
     toggleMic,
     toggleCam,
+    toggleScreenShare,
   };
 }
