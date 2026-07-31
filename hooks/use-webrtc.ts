@@ -160,7 +160,7 @@ export function useWebRTC(slug: string | null) {
   const toggleMic = useCallback(async () => {
     try {
       if (!localStream) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mediaState.isCamOn });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         setLocalStream(stream);
         setMediaState((prev) => ({ ...prev, isMicOn: true }));
 
@@ -179,15 +179,22 @@ export function useWebRTC(slug: string | null) {
         });
         toast.success('Microphone enabled.');
       } else {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-          audioTrack.enabled = !mediaState.isMicOn;
-          setMediaState((prev) => ({ ...prev, isMicOn: audioTrack.enabled }));
+        if (mediaState.isMicOn) {
+          // Stop hardware microphone completely
+          localStream.getAudioTracks().forEach((track) => {
+            track.stop();
+            localStream.removeTrack(track);
+          });
+          setMediaState((prev) => ({ ...prev, isMicOn: false }));
+          toast.info('Microphone turned off.');
         } else {
           const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const newAudioTrack = audioStream.getAudioTracks()[0];
-          localStream.addTrack(newAudioTrack);
-          setMediaState((prev) => ({ ...prev, isMicOn: true }));
+          if (newAudioTrack) {
+            localStream.addTrack(newAudioTrack);
+            setMediaState((prev) => ({ ...prev, isMicOn: true }));
+            toast.success('Microphone enabled.');
+          }
         }
       }
 
@@ -224,15 +231,22 @@ export function useWebRTC(slug: string | null) {
         setMediaState((prev) => ({ ...prev, isCamOn: true }));
         toast.success('Camera enabled.');
       } else {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-          videoTrack.enabled = !mediaState.isCamOn;
-          setMediaState((prev) => ({ ...prev, isCamOn: videoTrack.enabled }));
+        if (mediaState.isCamOn) {
+          // Stop hardware camera track completely to turn off webcam LED light!
+          localStream.getVideoTracks().forEach((track) => {
+            track.stop();
+            localStream.removeTrack(track);
+          });
+          setMediaState((prev) => ({ ...prev, isCamOn: false }));
+          toast.info('Camera turned off.');
         } else {
           const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
           const newVideoTrack = videoStream.getVideoTracks()[0];
-          localStream.addTrack(newVideoTrack);
-          setMediaState((prev) => ({ ...prev, isCamOn: true }));
+          if (newVideoTrack) {
+            localStream.addTrack(newVideoTrack);
+            setMediaState((prev) => ({ ...prev, isCamOn: true }));
+            toast.success('Camera enabled.');
+          }
         }
       }
 
