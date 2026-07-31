@@ -41,8 +41,30 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
   ) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
     const [isAdapterReady, setIsAdapterReady] = useState(false);
     const readyFiredRef = useRef(false);
+
+    const initAudioBoost = () => {
+      const v = videoRef.current;
+      if (!v || gainNodeRef.current) return;
+      try {
+        const webkitAudioCtx = (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        const AudioContextClass = window.AudioContext || webkitAudioCtx;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
+        const source = ctx.createMediaElementSource(v);
+        const gain = ctx.createGain();
+        source.connect(gain);
+        gain.connect(ctx.destination);
+
+        audioCtxRef.current = ctx;
+        gainNodeRef.current = gain;
+      } catch {
+        /* Ignore if already connected or blocked */
+      }
+    };
 
     // Expose adapter interface
     useImperativeHandle(
@@ -59,7 +81,25 @@ export const HTML5Player = forwardRef<HTML5PlayerHandle, HTML5PlayerProps>(
         },
         pause: () => { videoRef.current?.pause(); },
         seekTo: (s: number) => { if (videoRef.current) videoRef.current.currentTime = s; },
-        setVolume: (v: number) => { if (videoRef.current) videoRef.current.volume = v; },
+        setVolume: (v: number) => {
+          const el = videoRef.current;
+          if (!el) return;
+          if (v > 1.0) {
+            initAudioBoost();
+            el.volume = 1.0;
+            if (gainNodeRef.current) {
+              gainNodeRef.current.gain.value = v;
+            }
+            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+              audioCtxRef.current.resume().catch(() => null);
+            }
+          } else {
+            el.volume = v;
+            if (gainNodeRef.current) {
+              gainNodeRef.current.gain.value = 1.0;
+            }
+          }
+        },
         setMuted: (m: boolean) => { if (videoRef.current) videoRef.current.muted = m; },
         setPlaybackRate: (r: number) => { if (videoRef.current) videoRef.current.playbackRate = r; },
         getDuration: () => videoRef.current?.duration ?? 0,
