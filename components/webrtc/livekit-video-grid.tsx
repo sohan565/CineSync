@@ -30,12 +30,19 @@ function LiveKitSidebarControls() {
     try {
       await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
     } catch (e: unknown) {
-      const err = e instanceof Error ? e.message : '';
-      toast.error(
-        err.includes('Permission') || err.includes('NotAllowed')
-          ? 'Microphone permission blocked. Please allow mic access in your browser address bar.'
-          : 'Could not access microphone. Please check your hardware device.'
-      );
+      const err = e as { name?: string; message?: string };
+      const errName = err?.name || '';
+      const errMsg = err?.message || '';
+
+      if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent')) {
+        toast.error('Microphone is in use by another tab or app (Zoom/Discord/Localhost). Please close the other app.');
+      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        toast.error('Microphone permission blocked. Click the lock 🔒 icon in your browser address bar to allow.');
+      } else if (errName === 'NotFoundError') {
+        toast.error('No microphone device found on your computer.');
+      } else {
+        toast.error(`Microphone error: ${errMsg || errName || 'Could not access microphone.'}`);
+      }
     }
   };
 
@@ -43,12 +50,19 @@ function LiveKitSidebarControls() {
     try {
       await localParticipant.setCameraEnabled(!isCameraEnabled);
     } catch (e: unknown) {
-      const err = e instanceof Error ? e.message : '';
-      toast.error(
-        err.includes('Permission') || err.includes('NotAllowed')
-          ? 'Camera permission blocked. Please allow camera access in your browser address bar.'
-          : 'Could not access camera device.'
-      );
+      const err = e as { name?: string; message?: string };
+      const errName = err?.name || '';
+      const errMsg = err?.message || '';
+
+      if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent') || errMsg.includes('Could not start')) {
+        toast.error('Camera is being used by another tab (e.g. localhost:8080) or app (Zoom/Teams). Please close the other tab or app!');
+      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        toast.error('Camera permission blocked. Click the lock 🔒 icon in your browser address bar to allow.');
+      } else if (errName === 'NotFoundError') {
+        toast.error('No camera device found on your computer.');
+      } else {
+        toast.error(`Camera error: ${errMsg || errName || 'Could not access camera device.'}`);
+      }
     }
   };
 
