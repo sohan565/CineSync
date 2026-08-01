@@ -11,7 +11,14 @@ class RealtimeChannelManager {
     let channel = this.channels.get(topic);
     if (!channel) {
       const supabase = createClient();
-      channel = supabase.channel(topic);
+      const existing = supabase.getChannels().find(
+        (ch) => ch.topic === topic || ch.topic === `realtime:${topic}`
+      );
+      if (existing) {
+        channel = existing;
+      } else {
+        channel = supabase.channel(topic);
+      }
       this.channels.set(topic, channel);
     }
     return channel;

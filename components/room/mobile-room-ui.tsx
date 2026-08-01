@@ -145,21 +145,25 @@ export function MobileRoomUI({ slug, roomId, hostId, members }: MobileRoomUIProp
       )}
 
       {/* Chat Bottom Sheet */}
-      <BottomSheet isOpen={activeTab === 'chat'} onClose={closeSheet} title="Live Chat">
-        <ChatPanel
-          roomId={roomId}
-          slug={slug}
-          hostId={hostId}
-          className="h-full"
-        />
-      </BottomSheet>
+      {activeTab === 'chat' && (
+        <BottomSheet isOpen={true} onClose={closeSheet} title="Live Chat">
+          <ChatPanel
+            roomId={roomId}
+            slug={slug}
+            hostId={hostId}
+            className="h-full"
+          />
+        </BottomSheet>
+      )}
 
       {/* Members Bottom Sheet */}
-      <BottomSheet isOpen={activeTab === 'members'} onClose={closeSheet} title="Members">
-        <div className="px-1 py-2">
-          <MembersList members={members} />
-        </div>
-      </BottomSheet>
+      {activeTab === 'members' && (
+        <BottomSheet isOpen={true} onClose={closeSheet} title="Members">
+          <div className="px-1 py-2">
+            <MembersList members={members} />
+          </div>
+        </BottomSheet>
+      )}
 
       {/* ── Bottom Navigation Bar ────────────────────────────────────────── */}
       <nav

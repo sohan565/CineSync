@@ -140,9 +140,18 @@ export class ChatService {
     onDelete?: (messageId: string) => void
   ) {
     const supabase = this.supabase;
+    const topic = `chat:${roomId}`;
+
+    // Clean up any pre-existing channel for this topic to avoid "cannot add callbacks after subscribe()"
+    const existing = supabase.getChannels().find(
+      (ch) => ch.topic === topic || ch.topic === `realtime:${topic}`
+    );
+    if (existing) {
+      supabase.removeChannel(existing);
+    }
 
     const channel = supabase
-      .channel(`chat:${roomId}`)
+      .channel(topic)
       .on(
         'postgres_changes',
         {
@@ -198,7 +207,15 @@ export class ChatService {
     displayName: string,
     isTyping: boolean
   ): void {
-    const channel = this.supabase.channel(`room:${slug}`);
+    const supabase = this.supabase;
+    const topic = `typing:${slug}`;
+    let channel = supabase.getChannels().find(
+      (ch) => ch.topic === topic || ch.topic === `realtime:${topic}`
+    );
+    if (!channel) {
+      channel = supabase.channel(topic);
+      channel.subscribe();
+    }
     channel.send({
       type: 'broadcast',
       event: 'TYPING',
