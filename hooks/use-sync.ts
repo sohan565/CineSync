@@ -103,7 +103,7 @@ export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
         }
       }
     },
-    [adapterRef, setPlayerState, setCurrentMedia]
+    [adapterRef, setPlayerState, setCurrentMedia, userId]
   );
 
   // Subscribe on mount, unsubscribe on unmount

@@ -34,7 +34,7 @@ export function VideoTile({
       return;
     }
 
-    const checkVideoTrack = () => {
+    const playAndSyncVideo = () => {
       const vTracks = stream.getVideoTracks();
       const hasTrack = vTracks.some((t) => t.enabled && t.readyState === 'live');
       setHasLiveVideoTrack(hasTrack);
@@ -47,15 +47,27 @@ export function VideoTile({
       }
     };
 
-    checkVideoTrack();
+    playAndSyncVideo();
 
-    // Listen for dynamic track additions (e.g., when remote user turns on camera after connection)
-    stream.addEventListener('addtrack', checkVideoTrack);
-    stream.addEventListener('removetrack', checkVideoTrack);
+    // ── Re-bind and re-play on Fullscreen, Visibility, or Track Changes ──────
+    const handleLayoutOrStateChange = () => {
+      playAndSyncVideo();
+    };
+
+    document.addEventListener('fullscreenchange', handleLayoutOrStateChange);
+    document.addEventListener('webkitfullscreenchange', handleLayoutOrStateChange);
+    document.addEventListener('mozfullscreenchange', handleLayoutOrStateChange);
+    document.addEventListener('visibilitychange', handleLayoutOrStateChange);
+    stream.addEventListener('addtrack', handleLayoutOrStateChange);
+    stream.addEventListener('removetrack', handleLayoutOrStateChange);
 
     return () => {
-      stream.removeEventListener('addtrack', checkVideoTrack);
-      stream.removeEventListener('removetrack', checkVideoTrack);
+      document.removeEventListener('fullscreenchange', handleLayoutOrStateChange);
+      document.removeEventListener('webkitfullscreenchange', handleLayoutOrStateChange);
+      document.removeEventListener('mozfullscreenchange', handleLayoutOrStateChange);
+      document.removeEventListener('visibilitychange', handleLayoutOrStateChange);
+      stream.removeEventListener('addtrack', handleLayoutOrStateChange);
+      stream.removeEventListener('removetrack', handleLayoutOrStateChange);
     };
   }, [stream, isCamOn]);
 
@@ -81,7 +93,7 @@ export function VideoTile({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal} // Mute local stream to prevent audio feedback
+          muted={isLocal} // Mute local stream to prevent audio feedback loop
           className={cn('h-full w-full object-cover', isLocal ? '-scale-x-100' : '')}
         />
       ) : (
