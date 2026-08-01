@@ -21,6 +21,7 @@ import { SearchModal } from '@/components/search/search-modal';
 import { usePlayer } from '@/hooks/use-player';
 import { MobileRoomUI } from '@/components/room/mobile-room-ui';
 import { WebRTCProvider } from '@/components/providers/webrtc-provider';
+import { useRoomMembers } from '@/hooks/use-room-members';
 
 // ── Privacy badge helpers ─────────────────────────────────────────────────────
 
@@ -88,6 +89,10 @@ export default function RoomPage({ params }: RoomPageProps) {
     }
   };
 
+  const roomId = roomWithMembers?.id ?? null;
+  const initialMembers = roomWithMembers?.members ?? [];
+  const liveMembers = useRoomMembers(slug, roomId, initialMembers);
+
   // ── Loading ───────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -110,7 +115,7 @@ export default function RoomPage({ params }: RoomPageProps) {
     notFound();
   }
 
-  const { members, ...room } = roomWithMembers;
+  const room = roomWithMembers;
   const privacy = privacyConfig[room.privacy];
   const isHost = user?.id === room.hostId;
 
@@ -145,7 +150,7 @@ export default function RoomPage({ params }: RoomPageProps) {
                   <SyncStatusBadge slug={slug} />
                 </div>
                 <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                  #{room.slug} · {members.length} member{members.length !== 1 ? 's' : ''}
+                  #{room.slug} · {liveMembers.length} member{liveMembers.length !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
@@ -203,7 +208,7 @@ export default function RoomPage({ params }: RoomPageProps) {
           {/* Voice & Video SFU / P2P Grid */}
           <LiveKitVideoGrid slug={slug} />
 
-          <MembersList members={members} />
+          <MembersList members={liveMembers} />
 
           {/* Chat Panel */}
           <ChatPanel
@@ -220,7 +225,7 @@ export default function RoomPage({ params }: RoomPageProps) {
         slug={slug}
         roomId={room.id}
         hostId={room.hostId}
-        members={members}
+        members={liveMembers}
       />
 
       <SearchModal
