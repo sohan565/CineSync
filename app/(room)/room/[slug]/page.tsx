@@ -19,6 +19,7 @@ import { ChatPanel } from '@/components/chat/chat-panel';
 import { LiveKitVideoGrid } from '@/components/webrtc/livekit-video-grid';
 import { SearchModal } from '@/components/search/search-modal';
 import { usePlayer } from '@/hooks/use-player';
+import { MobileRoomUI } from '@/components/room/mobile-room-ui';
 
 // ── Privacy badge helpers ─────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export default function RoomPage({ params }: RoomPageProps) {
 
         {/* ── Main area ───────────────────────────────────────────────────── */}
         <main
-          className="flex flex-1 flex-col gap-4 p-4 lg:p-6"
+          className="flex flex-1 flex-col gap-4 p-4 pb-20 lg:p-6 lg:pb-6"
           aria-label={`Watch room: ${room.name}`}
         >
           {/* Room header */}
@@ -212,6 +213,14 @@ export default function RoomPage({ params }: RoomPageProps) {
           />
         </aside>
       </div>
+
+      {/* ── Mobile Bottom Tab Bar (Android / small screens) ───────────── */}
+      <MobileRoomUI
+        slug={slug}
+        roomId={room.id}
+        hostId={room.hostId}
+        members={members}
+      />
 
       <SearchModal
         isOpen={searchOpen}

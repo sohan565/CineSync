@@ -26,14 +26,41 @@ export function useWebRTC(slug: string | null) {
 
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const mediaStateRef = useRef<MediaStreamState>(mediaState);
   const speakerDetectorRef = useRef<ActiveSpeakerDetector | null>(null);
 
-  // Sync ref
+  // Keep refs in sync so callbacks always see latest values
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
 
-  // ── Create or get Peer Connection ──────────────────────────────────────────
+  useEffect(() => {
+    mediaStateRef.current = mediaState;
+  }, [mediaState]);
+
+  // ── Send offer to a specific peer ─────────────────────────────────────────
+
+  const sendOffer = useCallback(
+    async (pc: RTCPeerConnection, peerId: string) => {
+      if (!slug || !user) return;
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        WebRTCService.sendSignal(slug, {
+          type: 'offer',
+          senderId: user.id,
+          targetId: peerId,
+          sdp: offer,
+          mediaState: mediaStateRef.current,
+        });
+      } catch {
+        /* ignore transient negotiation errors */
+      }
+    },
+    [slug, user]
+  );
+
+  // ── Create or get Peer Connection ─────────────────────────────────────────
 
   const getOrCreatePeerConnection = useCallback(
     (peerId: string) => {
@@ -43,12 +70,17 @@ export function useWebRTC(slug: string | null) {
       pc = new RTCPeerConnection(STUN_SERVERS);
       peerConnectionsRef.current.set(peerId, pc);
 
-      // Attach local tracks if available
+      // Attach current local tracks
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
           pc?.addTrack(track, localStreamRef.current!);
         });
       }
+
+      // ✅ KEY FIX: Re-negotiate whenever tracks change
+      pc.onnegotiationneeded = async () => {
+        await sendOffer(pc!, peerId);
+      };
 
       // Handle ICE Candidates
       pc.onicecandidate = (event) => {
@@ -62,7 +94,7 @@ export function useWebRTC(slug: string | null) {
         }
       };
 
-      // Handle Remote Stream Track
+      // ✅ Handle incoming Remote Stream Tracks
       pc.ontrack = (event) => {
         const remoteStream = event.streams[0] || new MediaStream([event.track]);
         setRemotePeers((prev) => {
@@ -94,33 +126,74 @@ export function useWebRTC(slug: string | null) {
 
       return pc;
     },
-    [slug, user]
+    [slug, user, sendOffer]
   );
 
-  // ── Signaling Handler ───────────────────────────────────────────────────────
+  // ── Propagate a new track to ALL existing peer connections ─────────────────
+  // Called whenever toggleCam / toggleMic adds a new track dynamically
+
+  const propagateTrackToAllPeers = useCallback(
+    (track: MediaTrack, stream: MediaStream) => {
+      peerConnectionsRef.current.forEach((pc) => {
+        // Only add if not already present
+        const senders = pc.getSenders();
+        const alreadySending = senders.some((s) => s.track?.id === track.id);
+        if (!alreadySending) {
+          pc.addTrack(track, stream);
+          // onnegotiationneeded fires automatically after addTrack
+        }
+      });
+    },
+    []
+  );
+
+  // ── Remove a track from ALL existing peer connections ─────────────────────
+
+  const removeTrackFromAllPeers = useCallback((trackId: string) => {
+    peerConnectionsRef.current.forEach((pc) => {
+      const senders = pc.getSenders();
+      const sender = senders.find((s) => s.track?.id === trackId);
+      if (sender) {
+        try { pc.removeTrack(sender); } catch { /* ignore */ }
+      }
+    });
+  }, []);
+
+  // ── Signaling Handler ─────────────────────────────────────────────────────
 
   const handleSignal = useCallback(
     async (signal: WebRTCSignalPayload) => {
       if (!slug || !user) return;
       const { senderId, type, sdp, candidate, mediaState: remoteState } = signal;
 
-      const pc = getOrCreatePeerConnection(senderId);
-
       if (type === 'offer' && sdp) {
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        const pc = getOrCreatePeerConnection(senderId);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          WebRTCService.sendSignal(slug, {
+            type: 'answer',
+            senderId: user.id,
+            targetId: senderId,
+            sdp: answer,
+          });
+        } catch { /* ignore stale negotiation */ }
 
-        WebRTCService.sendSignal(slug, {
-          type: 'answer',
-          senderId: user.id,
-          targetId: senderId,
-          sdp: answer,
-        });
       } else if (type === 'answer' && sdp) {
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const pc = peerConnectionsRef.current.get(senderId);
+        if (pc && pc.signalingState !== 'stable') {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          } catch { /* ignore */ }
+        }
+
       } else if (type === 'candidate' && candidate) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => null);
+        const pc = peerConnectionsRef.current.get(senderId);
+        if (pc) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => null);
+        }
+
       } else if (type === 'state-sync' && remoteState) {
         setRemotePeers((prev) => {
           const next = new Map(prev);
@@ -140,9 +213,19 @@ export function useWebRTC(slug: string | null) {
           });
           return next;
         });
+
+        // ✅ KEY FIX: When a new peer announces themselves ("hello"),
+        // we are an existing peer with a stream — send them an offer immediately
+        const stateWithHello = remoteState as MediaStreamState & { hello?: boolean };
+        if (stateWithHello.hello) {
+          const pc = getOrCreatePeerConnection(senderId);
+          if (localStreamRef.current) {
+            await sendOffer(pc, senderId);
+          }
+        }
       }
     },
-    [slug, user, getOrCreatePeerConnection]
+    [slug, user, getOrCreatePeerConnection, sendOffer]
   );
 
   // Subscribe to signals
@@ -150,17 +233,32 @@ export function useWebRTC(slug: string | null) {
     if (!slug || !user) return;
 
     const cleanup = WebRTCService.subscribeToSignals(slug, user.id, handleSignal);
+
+    // ✅ KEY FIX: Announce ourselves so existing peers with streams send us offers
+    // Small delay to ensure subscription is active before broadcasting
+    const helloTimer = setTimeout(() => {
+      WebRTCService.sendSignal(slug, {
+        type: 'state-sync',
+        senderId: user.id,
+        targetId: '',          // broadcast to all
+        mediaState: { ...mediaStateRef.current, hello: true } as MediaStreamState,
+      });
+    }, 800);
+
     return () => {
+      clearTimeout(helloTimer);
       cleanup();
     };
   }, [slug, user, handleSignal]);
 
-  // ── Toggle Microphone ───────────────────────────────────────────────────────
+  // ── Toggle Microphone ─────────────────────────────────────────────────────
 
   const toggleMic = useCallback(async () => {
     try {
-      if (!localStream) {
+      if (!localStreamRef.current) {
+        // No stream yet — create one with audio only
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        localStreamRef.current = stream;
         setLocalStream(stream);
         setMediaState((prev) => ({ ...prev, isMicOn: true }));
 
@@ -173,46 +271,53 @@ export function useWebRTC(slug: string | null) {
               type: 'state-sync',
               senderId: user.id,
               targetId: '',
-              mediaState: { ...mediaState, isSpeaking },
+              mediaState: { ...mediaStateRef.current, isSpeaking },
             });
           }
         });
+
+        // Propagate new audio track to all existing peers
+        stream.getAudioTracks().forEach((track) => propagateTrackToAllPeers(track, stream));
         toast.success('Microphone enabled.');
+
+      } else if (mediaStateRef.current.isMicOn) {
+        // Turn mic OFF — stop and remove the hardware track
+        const audioTracks = localStreamRef.current.getAudioTracks();
+        audioTracks.forEach((track) => {
+          removeTrackFromAllPeers(track.id);
+          track.stop();
+          localStreamRef.current?.removeTrack(track);
+        });
+        setMediaState((prev) => ({ ...prev, isMicOn: false }));
+        toast.info('Microphone turned off.');
+
       } else {
-        if (mediaState.isMicOn) {
-          // Stop hardware microphone completely
-          localStream.getAudioTracks().forEach((track) => {
-            track.stop();
-            localStream.removeTrack(track);
-          });
-          setMediaState((prev) => ({ ...prev, isMicOn: false }));
-          toast.info('Microphone turned off.');
-        } else {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const newAudioTrack = audioStream.getAudioTracks()[0];
-          if (newAudioTrack) {
-            localStream.addTrack(newAudioTrack);
-            setMediaState((prev) => ({ ...prev, isMicOn: true }));
-            toast.success('Microphone enabled.');
-          }
+        // Turn mic ON — get new audio track
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const newAudioTrack = audioStream.getAudioTracks()[0];
+        if (newAudioTrack && localStreamRef.current) {
+          localStreamRef.current.addTrack(newAudioTrack);
+          propagateTrackToAllPeers(newAudioTrack, localStreamRef.current);
+          setMediaState((prev) => ({ ...prev, isMicOn: true }));
+          toast.success('Microphone enabled.');
         }
       }
 
-      // Broadcast state sync
+      // Broadcast state
       if (slug && user) {
         WebRTCService.sendSignal(slug, {
           type: 'state-sync',
           senderId: user.id,
           targetId: '',
-          mediaState: { ...mediaState, isMicOn: !mediaState.isMicOn },
+          mediaState: { ...mediaStateRef.current, isMicOn: !mediaStateRef.current.isMicOn },
         });
       }
     } catch {
       toast.error('Microphone permission denied or device not found.');
     }
-  }, [localStream, mediaState, slug, user]);
+  }, [slug, user, propagateTrackToAllPeers, removeTrackFromAllPeers]);
 
-  // ── Toggle Camera ───────────────────────────────────────────────────────────
+  // ── Toggle Camera ─────────────────────────────────────────────────────────
 
   const toggleCam = useCallback(async () => {
     try {
@@ -222,52 +327,62 @@ export function useWebRTC(slug: string | null) {
         frameRate: { ideal: 24 },
       };
 
-      if (!localStream) {
+      if (!localStreamRef.current) {
+        // No stream yet — create one with video (and audio if mic is on)
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: mediaState.isMicOn,
+          audio: mediaStateRef.current.isMicOn,
           video: videoConstraints,
         });
+        localStreamRef.current = stream;
         setLocalStream(stream);
         setMediaState((prev) => ({ ...prev, isCamOn: true }));
+
+        // Propagate all tracks to existing peers
+        stream.getTracks().forEach((track) => propagateTrackToAllPeers(track, stream));
         toast.success('Camera enabled.');
+
+      } else if (mediaStateRef.current.isCamOn) {
+        // Turn cam OFF — stop hardware camera (turns off webcam LED)
+        const videoTracks = localStreamRef.current.getVideoTracks();
+        videoTracks.forEach((track) => {
+          removeTrackFromAllPeers(track.id);
+          track.stop();
+          localStreamRef.current?.removeTrack(track);
+        });
+        setMediaState((prev) => ({ ...prev, isCamOn: false }));
+        toast.info('Camera turned off.');
+
       } else {
-        if (mediaState.isCamOn) {
-          // Stop hardware camera track completely to turn off webcam LED light!
-          localStream.getVideoTracks().forEach((track) => {
-            track.stop();
-            localStream.removeTrack(track);
-          });
-          setMediaState((prev) => ({ ...prev, isCamOn: false }));
-          toast.info('Camera turned off.');
-        } else {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-          const newVideoTrack = videoStream.getVideoTracks()[0];
-          if (newVideoTrack) {
-            localStream.addTrack(newVideoTrack);
-            setMediaState((prev) => ({ ...prev, isCamOn: true }));
-            toast.success('Camera enabled.');
-          }
+        // Turn cam ON — get new video track
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        const newVideoTrack = videoStream.getVideoTracks()[0];
+        if (newVideoTrack && localStreamRef.current) {
+          localStreamRef.current.addTrack(newVideoTrack);
+          propagateTrackToAllPeers(newVideoTrack, localStreamRef.current);
+          setMediaState((prev) => ({ ...prev, isCamOn: true }));
+          toast.success('Camera enabled.');
         }
       }
 
+      // Broadcast state
       if (slug && user) {
         WebRTCService.sendSignal(slug, {
           type: 'state-sync',
           senderId: user.id,
           targetId: '',
-          mediaState: { ...mediaState, isCamOn: !mediaState.isCamOn },
+          mediaState: { ...mediaStateRef.current, isCamOn: !mediaStateRef.current.isCamOn },
         });
       }
     } catch {
       toast.error('Camera permission denied or device not found.');
     }
-  }, [localStream, mediaState, slug, user]);
+  }, [slug, user, propagateTrackToAllPeers, removeTrackFromAllPeers]);
 
   // ── Toggle Screen Share ───────────────────────────────────────────────────
 
   const toggleScreenShare = useCallback(async () => {
     try {
-      if (mediaState.isScreenSharing) {
+      if (mediaStateRef.current.isScreenSharing) {
         setMediaState((prev) => ({ ...prev, isScreenSharing: false }));
         toast.info('Screen sharing stopped.');
       } else {
@@ -281,16 +396,20 @@ export function useWebRTC(slug: string | null) {
           toast.info('Screen sharing stopped.');
         };
 
+        localStreamRef.current = screenStream;
         setLocalStream(screenStream);
+
+        // Propagate screen share tracks to all existing peers
+        screenStream.getTracks().forEach((track) => propagateTrackToAllPeers(track, screenStream));
         setMediaState((prev) => ({ ...prev, isScreenSharing: true }));
         toast.success('Screen sharing started!');
       }
     } catch {
       toast.error('Screen sharing was cancelled.');
     }
-  }, [mediaState.isScreenSharing]);
+  }, [propagateTrackToAllPeers]);
 
-  // ── Cleanup on unmount ──────────────────────────────────────────────────────
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
 
   useEffect(() => {
     return () => {
@@ -310,3 +429,6 @@ export function useWebRTC(slug: string | null) {
     toggleScreenShare,
   };
 }
+
+// Helper type alias
+type MediaTrack = MediaStreamTrack;

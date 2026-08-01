@@ -17,7 +17,7 @@ export interface PeerStream {
   isSpeaking: boolean;
 }
 
-export type WebRTCSignalType = 'offer' | 'answer' | 'candidate' | 'state-sync';
+export type WebRTCSignalType = 'offer' | 'answer' | 'candidate' | 'state-sync' | 'hello';
 
 export interface WebRTCSignalPayload {
   type: WebRTCSignalType;
