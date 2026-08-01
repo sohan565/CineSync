@@ -269,11 +269,16 @@ export function useWebRTC(slug: string | null) {
   // ── Toggle Microphone ─────────────────────────────────────────────────────
 
   const toggleMic = useCallback(async () => {
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      toast.error('Media devices (mic/cam) are not available in this browser context.');
+      return;
+    }
+
     try {
       let isMicOn = false;
       if (!localStreamRef.current) {
         // No stream yet — create one with audio only
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         localStreamRef.current = stream;
         setLocalStream(stream);
         isMicOn = true;
@@ -308,6 +313,7 @@ export function useWebRTC(slug: string | null) {
           track.stop();
           localStreamRef.current?.removeTrack(track);
         });
+        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
         isMicOn = false;
         toast.info('Microphone turned off.');
 
@@ -318,6 +324,7 @@ export function useWebRTC(slug: string | null) {
         if (newAudioTrack && localStreamRef.current) {
           localStreamRef.current.addTrack(newAudioTrack);
           propagateTrackToAllPeers(newAudioTrack, localStreamRef.current);
+          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
           isMicOn = true;
           toast.success('Microphone enabled.');
         }
@@ -336,7 +343,8 @@ export function useWebRTC(slug: string | null) {
           mediaState: nextState,
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      console.error('Microphone error:', err);
       toast.error('Microphone permission denied or device not found.');
     }
   }, [slug, user, propagateTrackToAllPeers, removeTrackFromAllPeers]);
@@ -344,6 +352,11 @@ export function useWebRTC(slug: string | null) {
   // ── Toggle Camera ─────────────────────────────────────────────────────────
 
   const toggleCam = useCallback(async () => {
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      toast.error('Media devices (mic/cam) are not available in this browser context.');
+      return;
+    }
+
     try {
       const videoConstraints = {
         width: { ideal: 640 },
@@ -354,10 +367,12 @@ export function useWebRTC(slug: string | null) {
       let isCamOn = false;
       if (!localStreamRef.current) {
         // No stream yet — create one with video (and audio if mic is on)
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: mediaStateRef.current.isMicOn,
-          video: videoConstraints,
-        });
+        const constraints: MediaStreamConstraints = { video: videoConstraints };
+        if (mediaStateRef.current.isMicOn) {
+          constraints.audio = true;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
         setLocalStream(stream);
         isCamOn = true;
@@ -374,6 +389,7 @@ export function useWebRTC(slug: string | null) {
           track.stop();
           localStreamRef.current?.removeTrack(track);
         });
+        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
         isCamOn = false;
         toast.info('Camera turned off.');
 
@@ -384,6 +400,7 @@ export function useWebRTC(slug: string | null) {
         if (newVideoTrack && localStreamRef.current) {
           localStreamRef.current.addTrack(newVideoTrack);
           propagateTrackToAllPeers(newVideoTrack, localStreamRef.current);
+          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
           isCamOn = true;
           toast.success('Camera enabled.');
         }
@@ -402,7 +419,8 @@ export function useWebRTC(slug: string | null) {
           mediaState: nextState,
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      console.error('Camera error:', err);
       toast.error('Camera permission denied or device not found.');
     }
   }, [slug, user, propagateTrackToAllPeers, removeTrackFromAllPeers]);

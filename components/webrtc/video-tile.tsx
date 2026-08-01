@@ -27,11 +27,11 @@ export function VideoTile({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
+    if (videoRef.current && stream && isCamOn) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => null);
     }
-  }, [stream]);
+  }, [stream, isCamOn]);
 
   const initial = displayName.charAt(0).toUpperCase();
   const hue = displayName
