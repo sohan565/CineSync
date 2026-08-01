@@ -46,18 +46,24 @@ function LiveKitSidebarControls() {
 
   const toggleCam = async () => {
     try {
-      await localParticipant.setCameraEnabled(!isCameraEnabled);
+      await localParticipant.setCameraEnabled(!isCameraEnabled, {
+        resolution: { width: 640, height: 360, frameRate: 24 },
+      });
     } catch (e: unknown) {
-      const err = e as { name?: string; message?: string };
-      const errName = err?.name || '';
-      const errMsg = err?.message || '';
+      try {
+        await localParticipant.setCameraEnabled(!isCameraEnabled);
+      } catch {
+        const err = e as { name?: string; message?: string };
+        const errName = err?.name || '';
+        const errMsg = err?.message || '';
 
-      if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent')) {
-        toast.error('Camera is in use by another app or tab. Please close other camera apps.');
-      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        toast.error('Camera permission blocked. Please allow camera access in your browser settings.');
-      } else {
-        toast.error('Could not access camera.');
+        if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent')) {
+          toast.error('Camera is in use by another app or tab. Please close other camera apps.');
+        } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          toast.error('Camera permission blocked. Please allow camera access in your browser settings.');
+        } else {
+          toast.error('Could not access camera.');
+        }
       }
     }
   };

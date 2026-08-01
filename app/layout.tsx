@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
+import '@livekit/components-styles';
 import './globals.css';
 import { RootProvider } from '@/components/providers/root-provider';
 
