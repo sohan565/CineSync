@@ -108,7 +108,9 @@ export function useWebRTC(slug: string | null) {
 
       // Handle incoming Remote Stream Tracks
       pc.ontrack = (event) => {
-        const remoteStream = event.streams[0] || new MediaStream([event.track]);
+        const rawStream = event.streams[0] || new MediaStream([event.track]);
+        const remoteStream = new MediaStream(rawStream.getTracks());
+
         setRemotePeers((prev) => {
           const next = new Map(prev);
           const existing = next.get(peerId) || {
@@ -372,7 +374,17 @@ export function useWebRTC(slug: string | null) {
           constraints.audio = true;
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch {
+          // Fallback to basic { video: true } if ideal resolution constraints fail on PC webcam
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: mediaStateRef.current.isMicOn,
+          });
+        }
+
         localStreamRef.current = stream;
         setLocalStream(stream);
         isCamOn = true;
@@ -395,7 +407,13 @@ export function useWebRTC(slug: string | null) {
 
       } else {
         // Turn cam ON — get new video track
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        let videoStream: MediaStream;
+        try {
+          videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        } catch {
+          videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+
         const newVideoTrack = videoStream.getVideoTracks()[0];
         if (newVideoTrack && localStreamRef.current) {
           localStreamRef.current.addTrack(newVideoTrack);
