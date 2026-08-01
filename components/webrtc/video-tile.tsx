@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface VideoTileProps {
@@ -25,18 +25,46 @@ export function VideoTile({
   className,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState<boolean>(false);
 
   useEffect(() => {
-    if (videoRef.current && stream && isCamOn) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => null);
+    const videoNode = videoRef.current;
+    if (!stream) {
+      setHasLiveVideoTrack(false);
+      return;
     }
+
+    const checkVideoTrack = () => {
+      const vTracks = stream.getVideoTracks();
+      const hasTrack = vTracks.some((t) => t.enabled && t.readyState === 'live');
+      setHasLiveVideoTrack(hasTrack);
+
+      if (videoNode && isCamOn && hasTrack) {
+        if (videoNode.srcObject !== stream) {
+          videoNode.srcObject = stream;
+        }
+        videoNode.play().catch(() => null);
+      }
+    };
+
+    checkVideoTrack();
+
+    // Listen for dynamic track additions (e.g., when remote user turns on camera after connection)
+    stream.addEventListener('addtrack', checkVideoTrack);
+    stream.addEventListener('removetrack', checkVideoTrack);
+
+    return () => {
+      stream.removeEventListener('addtrack', checkVideoTrack);
+      stream.removeEventListener('removetrack', checkVideoTrack);
+    };
   }, [stream, isCamOn]);
 
-  const initial = displayName.charAt(0).toUpperCase();
-  const hue = displayName
+  const initial = (displayName || 'P').charAt(0).toUpperCase();
+  const hue = (displayName || 'Peer')
     .split('')
     .reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 360;
+
+  const showVideo = isCamOn && (isLocal ? Boolean(stream?.getVideoTracks().length) : hasLiveVideoTrack);
 
   return (
     <div
@@ -48,12 +76,12 @@ export function VideoTile({
       aria-label={`${displayName}'s video tile`}
     >
       {/* Video Element */}
-      {isCamOn && stream ? (
+      {showVideo ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal} // Mute local stream to prevent echo feedback
+          muted={isLocal} // Mute local stream to prevent audio feedback
           className={cn('h-full w-full object-cover', isLocal ? '-scale-x-100' : '')}
         />
       ) : (
@@ -81,23 +109,20 @@ export function VideoTile({
         </div>
       )}
 
-      {/* Name tag and indicators */}
-      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
-        <span className="truncate rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
-          {displayName} {isLocal && '(You)'}
+      {/* Footer Info Overlay */}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+        <span className="truncate max-w-[120px] rounded bg-black/65 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
+          {displayName} {isLocal ? '(You)' : ''}
         </span>
 
-        <div className="flex items-center gap-1">
-          {!isMicOn && (
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/80 text-[10px] text-white"
-              title="Microphone muted"
-              aria-label="Microphone muted"
-            >
-              🔇
-            </span>
-          )}
-        </div>
+        {!isMicOn && (
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/90 text-[10px] text-white shadow-sm"
+            title="Muted"
+          >
+            🔇
+          </span>
+        )}
       </div>
     </div>
   );

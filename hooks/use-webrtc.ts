@@ -218,7 +218,8 @@ export function useWebRTC(slug: string | null) {
           const next = new Map(prev);
           const existing = next.get(senderId) || {
             peerId: senderId,
-            displayName: 'Peer',
+            displayName: signal.displayName || 'Peer',
+            avatarUrl: signal.avatarUrl ?? null,
             stream: null,
             isMicOn: remoteState.isMicOn,
             isCamOn: remoteState.isCamOn,
@@ -226,6 +227,8 @@ export function useWebRTC(slug: string | null) {
           };
           next.set(senderId, {
             ...existing,
+            displayName: signal.displayName || existing.displayName,
+            avatarUrl: signal.avatarUrl !== undefined ? signal.avatarUrl : existing.avatarUrl,
             isMicOn: remoteState.isMicOn,
             isCamOn: remoteState.isCamOn,
             isSpeaking: remoteState.isSpeaking,
@@ -258,9 +261,11 @@ export function useWebRTC(slug: string | null) {
         type: 'state-sync',
         senderId: user.id,
         targetId: '',          // broadcast to all
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
         mediaState: { ...mediaStateRef.current, hello: true } as MediaStreamState,
       });
-    }, 800);
+    }, 600);
 
     return () => {
       clearTimeout(helloTimer);

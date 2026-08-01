@@ -23,6 +23,8 @@ export interface WebRTCSignalPayload {
   type: WebRTCSignalType;
   senderId: string;
   targetId: string;
+  displayName?: string;
+  avatarUrl?: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sdp?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
