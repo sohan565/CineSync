@@ -117,6 +117,9 @@ export class MediaService {
       .on('broadcast', { event: 'MEDIA_CHANGE' }, ({ payload }) =>
         onEvent(payload as PlayerSyncEvent)
       )
+      .on('broadcast', { event: 'PLAYER_SYNC_TICK' }, ({ payload }) =>
+        onEvent(payload as PlayerSyncEvent)
+      )
       .subscribe();
 
     return () => {

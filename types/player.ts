@@ -46,7 +46,8 @@ export type PlayerEventType =
   | 'PLAYER_PAUSE'
   | 'PLAYER_SEEK'
   | 'PLAYER_RATE'
-  | 'MEDIA_CHANGE';
+  | 'MEDIA_CHANGE'
+  | 'PLAYER_SYNC_TICK'; // Host heartbeat: viewers auto-seek if > 1s drift
 
 export interface PlayerSyncEvent {
   type: PlayerEventType;

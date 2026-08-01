@@ -50,6 +50,7 @@ export function usePlayer({
     slug,
     roomId,
     userId,
+    isHost,
     adapterRef,
   });
 

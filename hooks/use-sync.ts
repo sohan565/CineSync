@@ -12,18 +12,25 @@ import {
 import { parseMediaUrl } from '@/lib/player/url-parser';
 import { toast } from '@/hooks/use-toast';
 
+// ── Drift threshold: if viewer is > 1 second off from host, force seek ────────
+const SYNC_DRIFT_THRESHOLD_S = 1;
+
 interface UseSyncOptions {
   slug: string;
   roomId: string;
   userId: string;
+  isHost: boolean;
   adapterRef: React.MutableRefObject<PlayerAdapter | null>;
 }
 
 /**
  * Subscribes to Supabase Realtime broadcast events for the room channel
  * and applies NTP-corrected sync actions to the player adapter.
+ *
+ * Host mode: broadcasts PLAYER_SYNC_TICK every 3 seconds with its current timestamp.
+ * Viewer mode: on each PLAYER_SYNC_TICK, if drift > 1s, seekTo the host position.
  */
-export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
+export function useSync({ slug, roomId, userId, isHost, adapterRef }: UseSyncOptions) {
   const setPlayerState = useAppStore((s) => s.setPlayerState);
   const setCurrentMedia = useAppStore((s) => s.setCurrentMedia);
   const playerState = useAppStore((s) => s.playerState);
@@ -79,7 +86,7 @@ export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
           const expected = computeExpectedPosition(event, receivedAt);
           if (adapter?.isReady) {
             adapter.pause();
-            adapter.seekTo(expected); // snap to exact position on pause
+            adapter.seekTo(expected);
           }
           setPlayerState({ isPlaying: false, position: expected });
           break;
@@ -101,9 +108,32 @@ export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
           setPlayerState({ playbackRate: event.playbackRate ?? NORMAL_RATE });
           break;
         }
+
+        // ── Host heartbeat sync tick ─────────────────────────────────────────
+        // Viewers: auto-seek if drift > 1 second from host position
+        case 'PLAYER_SYNC_TICK': {
+          if (isHost) break; // Host doesn't process its own ticks
+          if (!adapter?.isReady) break;
+
+          const hostPosition = computeExpectedPosition(event, receivedAt);
+          const myPosition = adapter.getCurrentTime?.() ?? state.position;
+          const drift = Math.abs(myPosition - hostPosition);
+
+          if (drift > SYNC_DRIFT_THRESHOLD_S) {
+            adapter.seekTo(hostPosition);
+            setPlayerState({ position: hostPosition });
+          }
+
+          // Also ensure play/pause state is aligned
+          const hostIsPlaying = event.position !== undefined && !isNaN(event.position);
+          if (hostIsPlaying && state.isPlaying && !adapter.isReady) {
+            adapter.play();
+          }
+          break;
+        }
       }
     },
-    [adapterRef, setPlayerState, setCurrentMedia, userId]
+    [adapterRef, setPlayerState, setCurrentMedia, userId, isHost]
   );
 
   // Subscribe on mount, unsubscribe on unmount
@@ -121,6 +151,27 @@ export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
       cleanup?.();
     };
   }, [slug, handleSyncEvent]);
+
+  // ── Host: broadcast sync tick every 3 seconds ───────────────────────────────
+  useEffect(() => {
+    if (!isHost || !slug) return;
+
+    const syncInterval = setInterval(() => {
+      const adapter = adapterRef.current;
+      if (!adapter?.isReady) return;
+
+      const position = adapter.getCurrentTime?.() ?? playerStateRef.current.position;
+
+      MediaService.broadcastPlayerEvent(slug, {
+        type: 'PLAYER_SYNC_TICK',
+        position,
+        sentAt: Date.now(),
+        senderId: userId,
+      });
+    }, 3000);
+
+    return () => clearInterval(syncInterval);
+  }, [isHost, slug, userId, adapterRef]);
 
   // ── Broadcast helpers (for use by the host's controls) ────────────────────
 
