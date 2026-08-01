@@ -29,6 +29,7 @@ export function VideoTile({
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => null);
     }
   }, [stream]);
 

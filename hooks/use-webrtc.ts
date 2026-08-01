@@ -25,9 +25,21 @@ export function useWebRTC(slug: string | null) {
   });
 
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const iceCandidatesQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaStateRef = useRef<MediaStreamState>(mediaState);
   const speakerDetectorRef = useRef<ActiveSpeakerDetector | null>(null);
+
+  // Helper to drain queued ICE candidates after setRemoteDescription
+  const drainIceCandidates = async (peerId: string, pc: RTCPeerConnection) => {
+    const queue = iceCandidatesQueueRef.current.get(peerId) || [];
+    if (queue.length > 0) {
+      for (const candidate of queue) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => null);
+      }
+      iceCandidatesQueueRef.current.delete(peerId);
+    }
+  };
 
   // Keep refs in sync so callbacks always see latest values
   useEffect(() => {
@@ -77,7 +89,7 @@ export function useWebRTC(slug: string | null) {
         });
       }
 
-      // ✅ KEY FIX: Re-negotiate whenever tracks change
+      // Re-negotiate whenever tracks change
       pc.onnegotiationneeded = async () => {
         await sendOffer(pc!, peerId);
       };
@@ -94,7 +106,7 @@ export function useWebRTC(slug: string | null) {
         }
       };
 
-      // ✅ Handle incoming Remote Stream Tracks
+      // Handle incoming Remote Stream Tracks
       pc.ontrack = (event) => {
         const remoteStream = event.streams[0] || new MediaStream([event.track]);
         setRemotePeers((prev) => {
@@ -116,6 +128,7 @@ export function useWebRTC(slug: string | null) {
         if (pc?.connectionState === 'disconnected' || pc?.connectionState === 'failed') {
           pc.close();
           peerConnectionsRef.current.delete(peerId);
+          iceCandidatesQueueRef.current.delete(peerId);
           setRemotePeers((prev) => {
             const next = new Map(prev);
             next.delete(peerId);
@@ -130,17 +143,14 @@ export function useWebRTC(slug: string | null) {
   );
 
   // ── Propagate a new track to ALL existing peer connections ─────────────────
-  // Called whenever toggleCam / toggleMic adds a new track dynamically
 
   const propagateTrackToAllPeers = useCallback(
     (track: MediaTrack, stream: MediaStream) => {
       peerConnectionsRef.current.forEach((pc) => {
-        // Only add if not already present
         const senders = pc.getSenders();
         const alreadySending = senders.some((s) => s.track?.id === track.id);
         if (!alreadySending) {
           pc.addTrack(track, stream);
-          // onnegotiationneeded fires automatically after addTrack
         }
       });
     },
@@ -170,6 +180,7 @@ export function useWebRTC(slug: string | null) {
         const pc = getOrCreatePeerConnection(senderId);
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          await drainIceCandidates(senderId, pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           WebRTCService.sendSignal(slug, {
@@ -185,13 +196,19 @@ export function useWebRTC(slug: string | null) {
         if (pc && pc.signalingState !== 'stable') {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            await drainIceCandidates(senderId, pc);
           } catch { /* ignore */ }
         }
 
       } else if (type === 'candidate' && candidate) {
         const pc = peerConnectionsRef.current.get(senderId);
-        if (pc) {
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => null);
+        } else {
+          // Queue candidates arriving before remote description is set (crucial for mobile networks)
+          const queue = iceCandidatesQueueRef.current.get(senderId) || [];
+          queue.push(candidate);
+          iceCandidatesQueueRef.current.set(senderId, queue);
         }
 
       } else if (type === 'state-sync' && remoteState) {

@@ -23,7 +23,7 @@ interface UseSyncOptions {
  * Subscribes to Supabase Realtime broadcast events for the room channel
  * and applies NTP-corrected sync actions to the player adapter.
  */
-export function useSync({ slug, roomId, adapterRef }: UseSyncOptions) {
+export function useSync({ slug, roomId, userId, adapterRef }: UseSyncOptions) {
   const setPlayerState = useAppStore((s) => s.setPlayerState);
   const setCurrentMedia = useAppStore((s) => s.setCurrentMedia);
   const playerState = useAppStore((s) => s.playerState);
@@ -36,6 +36,11 @@ export function useSync({ slug, roomId, adapterRef }: UseSyncOptions) {
 
   const handleSyncEvent = useCallback(
     (event: PlayerSyncEvent) => {
+      // Ignore self-broadcasted sync events to prevent feedback loops/stuttering
+      if (event.senderId && userId && event.senderId === userId) {
+        return;
+      }
+
       const adapter = adapterRef.current;
       const receivedAt = Date.now();
       const state = playerStateRef.current;

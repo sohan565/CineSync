@@ -12,6 +12,7 @@ import { YouTubePlayer, YouTubePlayerHandle } from '@/components/player/youtube-
 import { HTML5Player, HTML5PlayerHandle } from '@/components/player/html5-player';
 import { PlayerControls } from '@/components/player/player-controls';
 import { PlayerError } from '@/components/player/player-error';
+import { DraggableVideoOverlay } from '@/components/webrtc/draggable-video-overlay';
 import { MediaUrlInput } from '@/components/player/media-url-input';
 import { SourceBadge } from '@/components/player/source-badge';
 import { useReactions } from '@/hooks/use-reactions';
@@ -134,6 +135,16 @@ export function MediaPlayer({
 
   // ── Fullscreen & PiP ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFSChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
   const handleFullscreen = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -374,6 +385,9 @@ export function MediaPlayer({
               <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white" />
             </div>
           )}
+
+          {/* Floating Draggable Video Grid Overlay (Visible in Fullscreen Mode) */}
+          {isFullscreen && <DraggableVideoOverlay slug={slug} />}
         </div>
 
         {/* ── Controls overlay ──────────────────────────────────────────── */}
