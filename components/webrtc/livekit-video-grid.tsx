@@ -1,266 +1,167 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import {
-  LiveKitRoom,
-  ParticipantTile,
-  useTracks,
-  useLocalParticipant,
-  RoomAudioRenderer,
-  useRoomContext,
-} from '@livekit/components-react';
-import { Track } from 'livekit-client';
-import { useAppStore } from '@/hooks/use-store';
+import React, { useRef, useEffect } from 'react';
+import { useAgora, AgoraRemotePeer } from '@/hooks/use-agora';
 import { VideoGrid } from '@/components/webrtc/video-grid';
 import { useWebRTC } from '@/hooks/use-webrtc';
+import { MediaControls } from '@/components/webrtc/media-controls';
+import { useAppStore } from '@/hooks/use-store';
 import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
 
 interface LiveKitVideoGridProps {
   slug: string;
   className?: string;
 }
 
-function LiveKitSidebarControls() {
-  const room = useRoomContext();
-  const { isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled, localParticipant } =
-    useLocalParticipant();
+// ── Agora Local Player Tile ──────────────────────────────────────────────────
 
-  const toggleMic = async () => {
-    try {
-      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
-    } catch (e: unknown) {
-      const err = e as { name?: string; message?: string };
-      const errName = err?.name || '';
-      const errMsg = err?.message || '';
+function AgoraLocalTile({
+  videoTrack,
+  displayName,
+  isMicOn,
+  isCamOn,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  videoTrack: any;
+  displayName: string;
+  isMicOn: boolean;
+  isCamOn: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
-      if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent')) {
-        toast.error('Microphone is in use by another app. Please close other voice apps.');
-      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        toast.error('Microphone permission blocked. Please allow mic access in your browser settings.');
-      } else {
-        toast.error('Could not access microphone.');
-      }
+  useEffect(() => {
+    if (containerRef.current && videoTrack && isCamOn) {
+      videoTrack.play(containerRef.current);
+      return () => {
+        try { videoTrack.stop(); } catch { /* ignore */ }
+      };
     }
-  };
+  }, [videoTrack, isCamOn]);
 
-  const toggleCam = async () => {
-    try {
-      await localParticipant.setCameraEnabled(!isCameraEnabled, {
-        resolution: { width: 640, height: 360, frameRate: 24 },
-      });
-    } catch (e: unknown) {
-      try {
-        await localParticipant.setCameraEnabled(!isCameraEnabled);
-      } catch {
-        const err = e as { name?: string; message?: string };
-        const errName = err?.name || '';
-        const errMsg = err?.message || '';
-
-        if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('Concurrent')) {
-          toast.error('Camera is in use by another app or tab. Please close other camera apps.');
-        } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-          toast.error('Camera permission blocked. Please allow camera access in your browser settings.');
-        } else {
-          toast.error('Could not access camera.');
-        }
-      }
-    }
-  };
-
-  const toggleScreen = async () => {
-    try {
-      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
-    } catch {
-      toast.error('Screen sharing was cancelled or unavailable.');
-    }
-  };
-
-  const handleDisconnect = () => {
-    room.disconnect();
-  };
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex items-center justify-center gap-1.5 border-t border-border/50 pt-2.5 pb-1 flex-wrap">
-      {/* Mic Button */}
-      <button
-        type="button"
-        onClick={toggleMic}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
-          isMicrophoneEnabled
-            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
-        )}
-      >
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          {isMicrophoneEnabled ? (
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
-          ) : (
-            <>
-              <line x1="1" y1="1" x2="23" y2="23" />
-              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
-              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v3" />
-            </>
-          )}
-        </svg>
-        {isMicrophoneEnabled ? 'Mic On' : 'Mic Off'}
-      </button>
-
-      {/* Camera Button */}
-      <button
-        type="button"
-        onClick={toggleCam}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
-          isCameraEnabled
-            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
-        )}
-      >
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          {isCameraEnabled ? (
-            <path d="M23 7l-7 5 7 5V7zM14 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
-          ) : (
-            <>
-              <line x1="1" y1="1" x2="23" y2="23" />
-              <path d="M21 21l-4.35-4.35M23 7l-7 5v1.5M1 5h2M15 5a2 2 0 0 1 2 2v8" />
-            </>
-          )}
-        </svg>
-        {isCameraEnabled ? 'Cam On' : 'Cam Off'}
-      </button>
-
-      {/* Screen Share Button */}
-      <button
-        type="button"
-        onClick={toggleScreen}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition border border-border/60',
-          isScreenShareEnabled
-            ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-            : 'bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground'
-        )}
-      >
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-          <line x1="8" y1="21" x2="16" y2="21" />
-          <line x1="12" y1="17" x2="12" y2="21" />
-        </svg>
-        {isScreenShareEnabled ? 'Sharing' : 'Share'}
-      </button>
-
-      {/* Disconnect Button */}
-      <button
-        type="button"
-        onClick={handleDisconnect}
-        className="flex items-center gap-1 rounded-lg bg-red-600/20 px-2 py-1.5 text-xs font-semibold text-red-400 border border-red-500/30 transition hover:bg-red-600/30"
-      >
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-        </svg>
-        Leave
-      </button>
-    </div>
-  );
-}
-
-function LiveKitSidebarLayout() {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false }
-  );
-
-  return (
-    <div className="flex flex-col gap-2 p-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto">
-        {tracks.map((trackRef) => (
-          <ParticipantTile
-            key={`${trackRef.participant.identity}-${trackRef.source}`}
-            trackRef={trackRef}
-            className="aspect-video overflow-hidden rounded-lg border border-border bg-black/40 shadow-sm"
-          />
-        ))}
+    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-card border border-border">
+      {isCamOn && videoTrack ? (
+        <div ref={containerRef} className="h-full w-full object-cover -scale-x-100" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-black/40">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-700 font-bold text-white text-lg">
+            {initial}
+          </div>
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+        <span className="rounded bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
+          {displayName} (You)
+        </span>
+        {!isMicOn && <span className="rounded-full bg-red-500/80 px-1.5 py-0.5 text-[10px]">🔇</span>}
       </div>
-
-      <RoomAudioRenderer />
-      <LiveKitSidebarControls />
     </div>
   );
 }
+
+// ── Agora Remote Player Tile ─────────────────────────────────────────────────
+
+function AgoraRemoteTile({ peer }: { peer: AgoraRemotePeer }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (containerRef.current && peer.videoTrack && peer.hasVideo) {
+      peer.videoTrack.play(containerRef.current);
+      return () => {
+        try { peer.videoTrack?.stop(); } catch { /* ignore */ }
+      };
+    }
+  }, [peer.videoTrack, peer.hasVideo]);
+
+  const nameStr = String(peer.uid).split('-')[0] || 'Peer';
+  const initial = nameStr.charAt(0).toUpperCase();
+
+  return (
+    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-card border border-border">
+      {peer.hasVideo && peer.videoTrack ? (
+        <div ref={containerRef} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-black/40">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-700 font-bold text-white text-lg">
+            {initial}
+          </div>
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+        <span className="rounded bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
+          {nameStr}
+        </span>
+        {!peer.hasAudio && <span className="rounded-full bg-red-500/80 px-1.5 py-0.5 text-[10px]">🔇</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Agora Video Grid ────────────────────────────────────────────────────
 
 export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
   const user = useAppStore((s) => s.user);
-  const username = user?.displayName || 'Guest User';
 
-  const [token, setToken] = useState<string>('');
-  const [error, setError] = useState<boolean>(false);
+  // Agora RTC Cloud Hook
+  const {
+    localVideoTrack,
+    remoteUsers,
+    isMicOn,
+    isCamOn,
+    isScreenSharing,
+    toggleMic,
+    toggleCam,
+    toggleScreenShare,
+    hasAppId,
+  } = useAgora(slug);
 
-  const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+  // WebRTC P2P mesh fallback hook
+  const p2p = useWebRTC(slug);
 
-  // WebRTC P2P fallback hooks
-  const { localStream, remotePeers, mediaState, toggleMic, toggleCam, toggleScreenShare } = useWebRTC(slug);
-
-  useEffect(() => {
-    if (!slug || !username) return;
-
-    let isMounted = true;
-    const uniqueIdentity = `${username}-${user?.id || Math.random().toString(36).substring(2, 7)}`;
-
-    async function fetchToken() {
-      try {
-        const res = await fetch(
-          `/api/livekit/token?room=${encodeURIComponent(slug)}&username=${encodeURIComponent(
-            username
-          )}&identity=${encodeURIComponent(uniqueIdentity)}`
-        );
-        const data = await res.json();
-        if (data.token && isMounted) {
-          setToken(data.token);
-        } else if (isMounted) {
-          setError(true);
-        }
-      } catch {
-        if (isMounted) setError(true);
-      }
-    }
-
-    fetchToken();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [slug, username, user?.id]);
-
-  // Fallback to native P2P mesh WebRTC if keys are missing
-  if (!serverUrl || error || !token) {
+  // If NEXT_PUBLIC_AGORA_APP_ID is not configured in env, seamlessly use P2P WebRTC mesh fallback
+  if (!hasAppId) {
     return (
       <VideoGrid
-        localStream={localStream}
-        remotePeers={remotePeers}
-        mediaState={mediaState}
-        onToggleMic={toggleMic}
-        onToggleCam={toggleCam}
-        onToggleScreenShare={toggleScreenShare}
+        localStream={p2p.localStream}
+        remotePeers={p2p.remotePeers}
+        mediaState={p2p.mediaState}
+        onToggleMic={p2p.toggleMic}
+        onToggleCam={p2p.toggleCam}
+        onToggleScreenShare={p2p.toggleScreenShare}
         className={className}
       />
     );
   }
 
+  const mediaState = {
+    isMicOn,
+    isCamOn,
+    isScreenSharing,
+    isSpeaking: false,
+  };
+
   return (
-    <div className={cn('rounded-xl border border-border bg-card overflow-hidden', className)} data-lk-theme="default">
-      <LiveKitRoom
-        video={false}
-        audio={false}
-        token={token}
-        serverUrl={serverUrl}
-        connect={true}
-      >
-        <LiveKitSidebarLayout />
-      </LiveKitRoom>
+    <div className={cn('flex flex-col gap-3', className)}>
+      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+        <AgoraLocalTile
+          videoTrack={localVideoTrack}
+          displayName={user?.displayName || 'You'}
+          isMicOn={isMicOn}
+          isCamOn={isCamOn || isScreenSharing}
+        />
+        {remoteUsers.map((peer) => (
+          <AgoraRemoteTile key={String(peer.uid)} peer={peer} />
+        ))}
+      </div>
+
+      <MediaControls
+        mediaState={mediaState}
+        onToggleMic={toggleMic}
+        onToggleCam={toggleCam}
+        onToggleScreenShare={toggleScreenShare}
+      />
     </div>
   );
 }
