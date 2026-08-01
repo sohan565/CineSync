@@ -20,6 +20,7 @@ import { LiveKitVideoGrid } from '@/components/webrtc/livekit-video-grid';
 import { SearchModal } from '@/components/search/search-modal';
 import { usePlayer } from '@/hooks/use-player';
 import { MobileRoomUI } from '@/components/room/mobile-room-ui';
+import { WebRTCProvider } from '@/components/providers/webrtc-provider';
 
 // ── Privacy badge helpers ─────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ export default function RoomPage({ params }: RoomPageProps) {
   const isHost = user?.id === room.hostId;
 
   return (
-    <>
+    <WebRTCProvider slug={slug}>
       <SiteHeader />
 
       <div className="flex min-h-[calc(100vh-4rem)] bg-background">
@@ -228,6 +229,6 @@ export default function RoomPage({ params }: RoomPageProps) {
         onSelectMedia={handleMediaChange}
         canControl={isHost || room.permissionMode === 'open'}
       />
-    </>
+    </WebRTCProvider>
   );
 }

@@ -14,7 +14,7 @@ import React, { useState } from 'react';
 import { ChatPanel } from '@/components/chat/chat-panel';
 import { MembersList } from '@/components/room/members-list';
 import { VideoGrid } from '@/components/webrtc/video-grid';
-import { useWebRTC } from '@/hooks/use-webrtc';
+import { useWebRTCContext } from '@/components/providers/webrtc-provider';
 import { RoomMember } from '@/types/room';
 import { cn } from '@/lib/utils';
 
@@ -83,13 +83,9 @@ function BottomSheet({
 
 // ── Camera Panel (inline, not a sheet) ───────────────────────────────────────
 
-function CameraPanel({
-  slug,
-}: {
-  slug: string;
-}) {
+function CameraPanel() {
   const { localStream, remotePeers, mediaState, toggleMic, toggleCam, toggleScreenShare } =
-    useWebRTC(slug);
+    useWebRTCContext();
 
   return (
     <div className="fixed bottom-16 left-0 right-0 z-50 flex flex-col rounded-t-2xl bg-[#0f0f14] border-t border-white/10 shadow-2xl max-h-[70vh]">
@@ -140,7 +136,7 @@ export function MobileRoomUI({ slug, roomId, hostId, members }: MobileRoomUIProp
             onClick={closeSheet}
             aria-hidden="true"
           />
-          <CameraPanel slug={slug} />
+          <CameraPanel />
         </>
       )}
 

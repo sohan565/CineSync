@@ -3,7 +3,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useAgora, AgoraPeer } from '@/hooks/use-agora';
 import { VideoGrid } from '@/components/webrtc/video-grid';
-import { useWebRTC } from '@/hooks/use-webrtc';
+import { useWebRTCContext } from '@/components/providers/webrtc-provider';
 import { MediaControls } from '@/components/webrtc/media-controls';
 import { useAppStore } from '@/hooks/use-store';
 import { cn } from '@/lib/utils';
@@ -118,7 +118,7 @@ export function LiveKitVideoGrid({ slug, className }: LiveKitVideoGridProps) {
   } = useAgora(slug);
 
   // P2P Native WebRTC Fallback
-  const p2p = useWebRTC(slug);
+  const p2p = useWebRTCContext();
 
   // If NEXT_PUBLIC_AGORA_APP_ID is not configured, fall back to native WebRTC mesh grid
   if (!hasAppId) {

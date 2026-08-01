@@ -1,19 +1,19 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useWebRTC } from '@/hooks/use-webrtc';
+import { useWebRTCContext } from '@/components/providers/webrtc-provider';
 import { VideoTile } from '@/components/webrtc/video-tile';
 import { useAppStore } from '@/hooks/use-store';
 import { cn } from '@/lib/utils';
 
 interface DraggableVideoOverlayProps {
-  slug: string;
+  slug?: string;
   className?: string;
 }
 
-export function DraggableVideoOverlay({ slug, className }: DraggableVideoOverlayProps) {
+export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps) {
   const user = useAppStore((s) => s.user);
-  const { localStream, remotePeers, mediaState } = useWebRTC(slug);
+  const { localStream, remotePeers, mediaState } = useWebRTCContext();
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
