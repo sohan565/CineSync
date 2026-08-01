@@ -232,13 +232,11 @@ export function useWebRTC(slug: string | null) {
         });
 
         // ✅ KEY FIX: When a new peer announces themselves ("hello"),
-        // we are an existing peer with a stream — send them an offer immediately
+        // establish a PeerConnection immediately so dynamic track updates work later
         const stateWithHello = remoteState as MediaStreamState & { hello?: boolean };
         if (stateWithHello.hello) {
           const pc = getOrCreatePeerConnection(senderId);
-          if (localStreamRef.current) {
-            await sendOffer(pc, senderId);
-          }
+          await sendOffer(pc, senderId);
         }
       }
     },
@@ -272,25 +270,30 @@ export function useWebRTC(slug: string | null) {
 
   const toggleMic = useCallback(async () => {
     try {
+      let isMicOn = false;
       if (!localStreamRef.current) {
         // No stream yet — create one with audio only
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         localStreamRef.current = stream;
         setLocalStream(stream);
-        setMediaState((prev) => ({ ...prev, isMicOn: true }));
+        isMicOn = true;
 
         // Attach active speaker detector
         speakerDetectorRef.current?.destroy();
         speakerDetectorRef.current = new ActiveSpeakerDetector(stream, (isSpeaking) => {
-          setMediaState((prev) => ({ ...prev, isSpeaking }));
-          if (slug && user) {
-            WebRTCService.sendSignal(slug, {
-              type: 'state-sync',
-              senderId: user.id,
-              targetId: '',
-              mediaState: { ...mediaStateRef.current, isSpeaking },
-            });
-          }
+          setMediaState((prev) => {
+            const next = { ...prev, isSpeaking };
+            mediaStateRef.current = next;
+            if (slug && user) {
+              WebRTCService.sendSignal(slug, {
+                type: 'state-sync',
+                senderId: user.id,
+                targetId: '',
+                mediaState: next,
+              });
+            }
+            return next;
+          });
         });
 
         // Propagate new audio track to all existing peers
@@ -305,7 +308,7 @@ export function useWebRTC(slug: string | null) {
           track.stop();
           localStreamRef.current?.removeTrack(track);
         });
-        setMediaState((prev) => ({ ...prev, isMicOn: false }));
+        isMicOn = false;
         toast.info('Microphone turned off.');
 
       } else {
@@ -315,10 +318,14 @@ export function useWebRTC(slug: string | null) {
         if (newAudioTrack && localStreamRef.current) {
           localStreamRef.current.addTrack(newAudioTrack);
           propagateTrackToAllPeers(newAudioTrack, localStreamRef.current);
-          setMediaState((prev) => ({ ...prev, isMicOn: true }));
+          isMicOn = true;
           toast.success('Microphone enabled.');
         }
       }
+
+      const nextState = { ...mediaStateRef.current, isMicOn };
+      setMediaState(nextState);
+      mediaStateRef.current = nextState;
 
       // Broadcast state
       if (slug && user) {
@@ -326,7 +333,7 @@ export function useWebRTC(slug: string | null) {
           type: 'state-sync',
           senderId: user.id,
           targetId: '',
-          mediaState: { ...mediaStateRef.current, isMicOn: !mediaStateRef.current.isMicOn },
+          mediaState: nextState,
         });
       }
     } catch {
@@ -344,6 +351,7 @@ export function useWebRTC(slug: string | null) {
         frameRate: { ideal: 24 },
       };
 
+      let isCamOn = false;
       if (!localStreamRef.current) {
         // No stream yet — create one with video (and audio if mic is on)
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -352,7 +360,7 @@ export function useWebRTC(slug: string | null) {
         });
         localStreamRef.current = stream;
         setLocalStream(stream);
-        setMediaState((prev) => ({ ...prev, isCamOn: true }));
+        isCamOn = true;
 
         // Propagate all tracks to existing peers
         stream.getTracks().forEach((track) => propagateTrackToAllPeers(track, stream));
@@ -366,7 +374,7 @@ export function useWebRTC(slug: string | null) {
           track.stop();
           localStreamRef.current?.removeTrack(track);
         });
-        setMediaState((prev) => ({ ...prev, isCamOn: false }));
+        isCamOn = false;
         toast.info('Camera turned off.');
 
       } else {
@@ -376,10 +384,14 @@ export function useWebRTC(slug: string | null) {
         if (newVideoTrack && localStreamRef.current) {
           localStreamRef.current.addTrack(newVideoTrack);
           propagateTrackToAllPeers(newVideoTrack, localStreamRef.current);
-          setMediaState((prev) => ({ ...prev, isCamOn: true }));
+          isCamOn = true;
           toast.success('Camera enabled.');
         }
       }
+
+      const nextState = { ...mediaStateRef.current, isCamOn };
+      setMediaState(nextState);
+      mediaStateRef.current = nextState;
 
       // Broadcast state
       if (slug && user) {
@@ -387,7 +399,7 @@ export function useWebRTC(slug: string | null) {
           type: 'state-sync',
           senderId: user.id,
           targetId: '',
-          mediaState: { ...mediaStateRef.current, isCamOn: !mediaStateRef.current.isCamOn },
+          mediaState: nextState,
         });
       }
     } catch {
@@ -399,8 +411,9 @@ export function useWebRTC(slug: string | null) {
 
   const toggleScreenShare = useCallback(async () => {
     try {
+      let isScreenSharing = false;
       if (mediaStateRef.current.isScreenSharing) {
-        setMediaState((prev) => ({ ...prev, isScreenSharing: false }));
+        isScreenSharing = false;
         toast.info('Screen sharing stopped.');
       } else {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -409,7 +422,17 @@ export function useWebRTC(slug: string | null) {
         });
 
         screenStream.getVideoTracks()[0].onended = () => {
-          setMediaState((prev) => ({ ...prev, isScreenSharing: false }));
+          const nextState = { ...mediaStateRef.current, isScreenSharing: false };
+          setMediaState(nextState);
+          mediaStateRef.current = nextState;
+          if (slug && user) {
+            WebRTCService.sendSignal(slug, {
+              type: 'state-sync',
+              senderId: user.id,
+              targetId: '',
+              mediaState: nextState,
+            });
+          }
           toast.info('Screen sharing stopped.');
         };
 
@@ -418,13 +441,27 @@ export function useWebRTC(slug: string | null) {
 
         // Propagate screen share tracks to all existing peers
         screenStream.getTracks().forEach((track) => propagateTrackToAllPeers(track, screenStream));
-        setMediaState((prev) => ({ ...prev, isScreenSharing: true }));
+        isScreenSharing = true;
         toast.success('Screen sharing started!');
+      }
+
+      const nextState = { ...mediaStateRef.current, isScreenSharing };
+      setMediaState(nextState);
+      mediaStateRef.current = nextState;
+
+      // Broadcast state
+      if (slug && user) {
+        WebRTCService.sendSignal(slug, {
+          type: 'state-sync',
+          senderId: user.id,
+          targetId: '',
+          mediaState: nextState,
+        });
       }
     } catch {
       toast.error('Screen sharing was cancelled.');
     }
-  }, [propagateTrackToAllPeers]);
+  }, [slug, user, propagateTrackToAllPeers]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
 
