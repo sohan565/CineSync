@@ -13,7 +13,7 @@ interface DraggableVideoOverlayProps {
 
 export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps) {
   const user = useAppStore((s) => s.user);
-  const { localStream, remotePeers, mediaState } = useWebRTCContext();
+  const { localStream, remotePeers, mediaState, toggleMic, toggleCam } = useWebRTCContext();
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
@@ -30,6 +30,7 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
   // ── Touch Drag Handler (Android / Mobile) ─────────────────────────────────
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
     const touch = e.touches[0];
     if (!touch) return;
     setIsDragging(true);
@@ -50,7 +51,7 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
       const deltaX = touch.clientX - dragStartRef.current.startX;
       const deltaY = touch.clientY - dragStartRef.current.startY;
 
-      const newX = Math.max(8, dragStartRef.current.initialX + deltaX);
+      const newX = Math.max(8, dragStartRef.current.initialX - deltaX);
       const newY = Math.max(8, dragStartRef.current.initialY + deltaY);
 
       setPosition({ x: newX, y: newY });
@@ -65,7 +66,6 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
   // ── Mouse Drag Handler (PC) ───────────────────────────────────────────────
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only drag when clicking header/handle or overlay background, not interactive buttons
     if ((e.target as HTMLElement).closest('button')) return;
     setIsDragging(true);
     dragStartRef.current = {
@@ -82,7 +82,7 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
       const deltaX = e.clientX - dragStartRef.current.startX;
       const deltaY = e.clientY - dragStartRef.current.startY;
 
-      const newX = Math.max(8, dragStartRef.current.initialX + deltaX);
+      const newX = Math.max(8, dragStartRef.current.initialX - deltaX);
       const newY = Math.max(8, dragStartRef.current.initialY + deltaY);
 
       setPosition({ x: newX, y: newY });
@@ -94,7 +94,6 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
     setIsDragging(false);
   }, []);
 
-  // Attach global move/up listeners during drag
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
@@ -110,15 +109,6 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
     };
   }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd]);
 
-  // Don't render overlay if no participants have media active and no remote peers
-  const hasActiveMedia =
-    mediaState.isCamOn ||
-    mediaState.isMicOn ||
-    mediaState.isScreenSharing ||
-    remotePeers.length > 0;
-
-  if (!hasActiveMedia) return null;
-
   return (
     <div
       ref={overlayRef}
@@ -129,7 +119,7 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
       onTouchStart={handleTouchStart}
       onMouseDown={handleMouseDown}
       className={cn(
-        'absolute z-50 flex flex-col rounded-2xl bg-black/80 border border-white/20 shadow-2xl backdrop-blur-md transition-shadow select-none touch-none',
+        'absolute z-50 flex flex-col rounded-2xl bg-black/85 border border-white/20 shadow-2xl backdrop-blur-md transition-shadow select-none touch-none',
         isDragging ? 'opacity-90 scale-[0.98] shadow-emerald-500/20' : '',
         isMinimized ? 'p-2 w-auto' : 'w-48 sm:w-56 p-2',
         className
@@ -147,7 +137,10 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
 
         <button
           type="button"
-          onClick={() => setIsMinimized((prev) => !prev)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMinimized((prev) => !prev);
+          }}
           className="flex h-5 w-5 items-center justify-center rounded-md text-xs text-white/70 hover:bg-white/15 hover:text-white"
           title={isMinimized ? 'Expand overlay' : 'Minimize overlay'}
         >
@@ -157,20 +150,18 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
 
       {/* Expanded view: Video Tiles */}
       {!isMinimized && (
-        <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-0.5">
+        <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-0.5">
           {/* Local participant video tile */}
-          {(mediaState.isCamOn || mediaState.isScreenSharing) && (
-            <VideoTile
-              stream={localStream}
-              displayName={user?.displayName ?? 'You'}
-              avatarUrl={user?.avatarUrl}
-              isMicOn={mediaState.isMicOn}
-              isCamOn={mediaState.isCamOn || mediaState.isScreenSharing}
-              isSpeaking={mediaState.isSpeaking}
-              isLocal
-              className="aspect-video w-full rounded-lg text-xs"
-            />
-          )}
+          <VideoTile
+            stream={localStream}
+            displayName={user?.displayName ?? 'You'}
+            avatarUrl={user?.avatarUrl}
+            isMicOn={mediaState.isMicOn}
+            isCamOn={mediaState.isCamOn || mediaState.isScreenSharing}
+            isSpeaking={mediaState.isSpeaking}
+            isLocal
+            className="aspect-video w-full rounded-lg text-xs"
+          />
 
           {/* Remote participant video tiles */}
           {remotePeers.map((peer) => (
@@ -187,6 +178,45 @@ export function DraggableVideoOverlay({ className }: DraggableVideoOverlayProps)
           ))}
         </div>
       )}
+
+      {/* Fullscreen Floating Controls Bar (Mic & Camera Toggles) */}
+      <div className="flex items-center justify-center gap-2 pt-1.5 mt-1.5 border-t border-white/10">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleMic();
+          }}
+          aria-label={mediaState.isMicOn ? 'Mute microphone' : 'Unmute microphone'}
+          className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-full text-xs transition-all shadow-sm',
+            mediaState.isMicOn
+              ? 'bg-white/20 text-white hover:bg-white/30'
+              : 'bg-red-500/90 text-white border border-red-400'
+          )}
+          title={mediaState.isMicOn ? 'Mute Mic' : 'Unmute Mic'}
+        >
+          {mediaState.isMicOn ? '🎙️' : '🔇'}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCam();
+          }}
+          aria-label={mediaState.isCamOn ? 'Turn off camera' : 'Turn on camera'}
+          className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-full text-xs transition-all shadow-sm',
+            mediaState.isCamOn
+              ? 'bg-white/20 text-white hover:bg-white/30'
+              : 'bg-red-500/90 text-white border border-red-400'
+          )}
+          title={mediaState.isCamOn ? 'Turn off Camera' : 'Turn on Camera'}
+        >
+          {mediaState.isCamOn ? '📹' : '📷❌'}
+        </button>
+      </div>
     </div>
   );
 }
